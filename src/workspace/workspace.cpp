@@ -1231,6 +1231,40 @@ namespace umbriel {
     return setFocusedHeight(std::clamp(m_layout->heightFraction(m_focusedView) + delta, 0.1, 1.0));
   }
 
+  bool Workspace::resizeFocusedEdge(uint32_t edges, double delta, bool widthAxis) {
+    if (m_focusedView == nullptr || edges == 0) {
+      return false;
+    }
+    View* view = m_focusedView;
+    if (view->floating()) {
+      view->resizeFloatingEdge(edges, delta, widthAxis);
+      markArrange();
+      return true;
+    }
+    if (view->maximizedToEdges()) {
+      view->setMaximizedToEdges(false);
+    }
+    const wlr_box usable = tiledArea();
+    std::unique_ptr<ResizeGrab> session = m_layout->beginResize(view, edges, usable);
+    if (session == nullptr) {
+      return false;
+    }
+    // A left or top edge travels against the axis, so growing from there moves in
+    // the negative direction. The session applies one total delta from the state
+    // it opened with, exactly like a single pointer move during a drag.
+    const bool outwardNegative = (edges & (WLR_EDGE_LEFT | WLR_EDGE_TOP)) != 0;
+    const double pixels = delta * (widthAxis ? usable.width : usable.height);
+    const double travel = outwardNegative ? -pixels : pixels;
+    session->applyDelta(widthAxis ? travel : 0.0, widthAxis ? 0.0 : travel, usable);
+    if (session->unmaximizeOnBegin()) {
+      wlr_xdg_toplevel_set_maximized(view->toplevel(), false);
+    }
+    wlr_xdg_toplevel_set_maximized(view->toplevel(), false);
+    ensureFocusedVisible();
+    markArrange();
+    return true;
+  }
+
   bool Workspace::toggleFocusedFullWidth() {
     if (m_focusedView != nullptr && m_focusedView->maximizedToEdges()) {
       m_focusedView->setMaximizedToEdges(false);

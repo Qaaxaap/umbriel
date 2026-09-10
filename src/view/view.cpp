@@ -2026,6 +2026,20 @@ namespace umbriel {
     requestFloatingSize(width, height);
   }
 
+  void View::resizeFloatingEdge(uint32_t edges, double delta, bool widthAxis) {
+    const wlr_box usable = floatingUsableArea();
+    const int step = static_cast<int>(std::lround(delta * (widthAxis ? usable.width : usable.height)));
+    // beginFloatingResize pins the edge opposite `edges`, so the size request
+    // below only has to move the named one.
+    beginFloatingResize(edges);
+    const auto [width, height] = floatingSize();
+    const XdgSizeHints hints = xdgSizeHints(m_toplevel);
+    const int newWidth = clampXdgWidth(widthAxis ? width + step : width, hints);
+    const int newHeight = clampXdgHeight(widthAxis ? height : height + step, hints);
+    resizeFloating(newWidth, newHeight);
+    finishFloatingResize();
+  }
+
   void View::finishFloatingResize() { m_floating.endResize(); }
 
   void View::syncFloatingResizePosition() {

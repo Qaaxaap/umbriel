@@ -182,6 +182,10 @@ namespace umbriel {
     // its current pending or committed size.
     bool
     resizeFloatingFractions(const std::optional<double>& widthFraction, const std::optional<double>& heightFraction);
+    // Edge-anchored floating resize: `edges` names the moving edge and the
+    // opposite one stays put, so a positive `delta` (a fraction of the usable
+    // extent on that axis) always grows the window.
+    void resizeFloatingEdge(uint32_t edges, double delta, bool widthAxis);
     // The size a float episode lands on: the remembered floating size, else the
     // last size the client acked, was configured with, or was assigned.
     [[nodiscard]] std::array<int, 2> floatingRestoreSize() const;

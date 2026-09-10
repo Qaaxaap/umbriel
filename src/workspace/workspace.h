@@ -150,6 +150,12 @@ namespace umbriel {
     bool modifyFocusedWidth(double delta);
     bool setFocusedHeight(double fraction);
     bool modifyFocusedHeight(double delta);
+    // Edge-anchored resize of the focused window: `edges` names the moving edge
+    // (WLR_EDGE_LEFT/RIGHT on the width axis, WLR_EDGE_TOP/BOTTOM on the height
+    // axis) and `delta` is a signed fraction of the usable extent on that axis.
+    // Unlike modifyFocusedWidth/Height the opposite edge stays put, so a positive
+    // delta always grows the window from that edge.
+    bool resizeFocusedEdge(uint32_t edges, double delta, bool widthAxis);
     bool toggleFocusedFullWidth();
     bool toggleFocusedMaximizedToEdges();
     bool toggleFocusedFullscreen();
