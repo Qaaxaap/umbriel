@@ -104,6 +104,9 @@ namespace umbriel {
     // overview is up the real trees are hidden, so there is nothing to slide and switching is a discrete step rather
     // than the animated transition it is outside.
     bool selectRelativeWorkspace(int delta, Output* output);
+    // Step window focus across the workspace axis (perpendicular to the filmstrip), matching the arrow-key
+    // navigation: sign < 0 steps left/up, sign > 0 steps right/down. Used by the three-finger cross-axis swipe.
+    void stepWindow(int sign);
     [[nodiscard]] bool dragging() const { return m_dragCard != nullptr || m_middlePressed; }
 
   private:

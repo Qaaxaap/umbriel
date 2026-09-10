@@ -2348,6 +2348,28 @@ namespace umbriel {
     return true;
   }
 
+  void Overview::stepWindow(int sign) {
+    Workspace* workspace = preferredWorkspace();
+    if (workspace == nullptr || workspace->group() == nullptr) {
+      return;
+    }
+    // Mirror the non-overview cross-axis gesture, which only scrolls the strip in
+    // the scrolling layout: dwindle and master have no strip, so the overview
+    // cross-axis swipe is inert there too.
+    if (workspace->scrollingLayout() == nullptr) {
+      return;
+    }
+    // Cross-axis navigation runs perpendicular to the filmstrip: on a vertical
+    // workspace axis that is left/right, on a horizontal axis it is up/down.
+    const bool horizontalAxis = workspace->group()->workspaceAxis() == WorkspaceAxis::Horizontal;
+    const KeybindAction action = horizontalAxis
+        ? (sign < 0 ? KeybindAction::WindowFocusUp : KeybindAction::WindowFocusDown)
+        : (sign < 0 ? KeybindAction::WindowFocusLeft : KeybindAction::WindowFocusRight);
+    Keybind bind;
+    bind.action = action;
+    m_server->executeKeybindAction(bind);
+  }
+
   void Overview::refreshShortcutMatches() {
     for (const auto& state : m_outputs) {
       for (const auto& card : state->cards) {

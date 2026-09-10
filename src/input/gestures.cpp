@@ -165,6 +165,7 @@ namespace umbriel {
       m_state = State::Idle;
       break;
     case State::OverviewSelect:
+    case State::OverviewSelectWindow:
     case State::Pending:
     case State::Idle:
       m_state = State::Idle;
@@ -257,6 +258,7 @@ namespace umbriel {
       break;
     case State::Forward:
     case State::OverviewSelect:
+    case State::OverviewSelectWindow:
     case State::Pending:
     case State::Idle:
       m_state = State::Idle;
@@ -346,16 +348,11 @@ namespace umbriel {
       const bool alongWorkspaceAxis = horizontalTravel == (m_workspaceAxis == WorkspaceAxis::Horizontal);
 
       if (Overview* overview = m_server->overview(); overview != nullptr && overview->interactive()) {
-        // Perpendicular travel has no meaning over the filmstrip, and letting it
-        // through would step workspaces on any swipe that drifted off true.
-        if (!alongWorkspaceAxis) {
-          m_state = State::Idle;
-          return;
-        }
-        // Start measuring workspace travel from the lock point, not the touch down.
         m_accumX = 0;
         m_accumY = 0;
-        m_state = State::OverviewSelect;
+        // Along the axis steps workspaces; across it steps window focus, mirroring
+        // the arrow-key navigation and the non-overview cross-axis strip gesture.
+        m_state = alongWorkspaceAxis ? State::OverviewSelect : State::OverviewSelectWindow;
         return;
       }
 
@@ -452,6 +449,28 @@ namespace umbriel {
       return;
     }
 
+    case State::OverviewSelectWindow: {
+      Overview* overview = m_server->overview();
+      if (overview == nullptr || !overview->interactive()) {
+        m_state = State::Idle;
+        return;
+      }
+      const bool horizontal = m_workspaceAxis == WorkspaceAxis::Horizontal;
+      double& accum = horizontal ? m_accumY : m_accumX;
+      accum += horizontal ? event->dy : event->dx;
+      // Same sense as the strip gesture outside the overview: swiping toward the
+      // negative axis direction steps focus forward (right/down).
+      while (accum <= -kOverviewStepPx) {
+        accum += kOverviewStepPx;
+        overview->stepWindow(m_naturalScrollDirection);
+      }
+      while (accum >= kOverviewStepPx) {
+        accum -= kOverviewStepPx;
+        overview->stepWindow(-m_naturalScrollDirection);
+      }
+      return;
+    }
+
     case State::Overview: {
       Overview* overview = m_server->overview();
       if (overview == nullptr) {
@@ -498,6 +517,7 @@ namespace umbriel {
     case State::Pending:
     // Each row step was committed as it happened; there is nothing to settle.
     case State::OverviewSelect:
+    case State::OverviewSelectWindow:
       m_state = State::Idle;
       return;
 

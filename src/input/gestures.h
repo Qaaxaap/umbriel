@@ -33,7 +33,7 @@ namespace umbriel {
     void endPointerScroll(bool cancelled, uint32_t timeMsec);
 
   private:
-    enum class State { Idle, Forward, Pending, Scroll, Switch, Overview, OverviewSelect };
+    enum class State { Idle, Forward, Pending, Scroll, Switch, Overview, OverviewSelect, OverviewSelectWindow };
     enum class ScrollSource { None, Swipe, Pointer };
 
     static void onSwipeBegin(wl_listener* listener, void* data);
@@ -95,6 +95,8 @@ namespace umbriel {
 
     // OverviewSelect state (three-finger along the workspace axis, overview up)
     // reuses the axis accumulator as the travel left over since the last step.
+    // OverviewSelectWindow state (three-finger across the workspace axis, overview
+    // up) steps window focus through Overview::stepWindow instead of discarding it.
 
     wl_listener m_swipeBegin{};
     wl_listener m_swipeUpdate{};
