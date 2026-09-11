@@ -261,11 +261,8 @@ namespace umbriel {
       if (!modifierOnly && nsyms > 0) {
         m_server->cursor()->noteTyping();
       }
-      // IME input-method virtual keyboards echo back keys the compositor already
-      // forwarded to them; letting one arm a modifier tap would cancel the pending
-      // physical tap, so modifier-only binds stop firing while an input method is
-      // active. Only physical keys take part in modifier-only binds.
-      if (!m_virtual) {
+      // IME echoes must not cancel the original key's pending tap.
+      if (!m_server->inputMethodRelay()->ownsKeyboard(m_keyboard)) {
         m_server->armModifierTap(
             this, event->keycode, std::span<const uint32_t>(syms, nsyms > 0 ? static_cast<size_t>(nsyms) : 0), modifiers
         );
