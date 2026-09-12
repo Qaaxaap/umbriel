@@ -1231,34 +1231,48 @@ namespace umbriel {
     return setFocusedHeight(std::clamp(m_layout->heightFraction(m_focusedView) + delta, 0.1, 1.0));
   }
 
-  bool Workspace::resizeFocusedEdge(uint32_t edges, double delta, bool widthAxis) {
-    if (m_focusedView == nullptr || edges == 0) {
+  bool Workspace::resizeFocusedEdge(uint32_t edges, double delta) {
+    if (m_focusedView == nullptr) {
+      return false;
+    }
+    const bool horizontal = (edges & (WLR_EDGE_LEFT | WLR_EDGE_RIGHT)) != 0;
+    const bool vertical = (edges & (WLR_EDGE_TOP | WLR_EDGE_BOTTOM)) != 0;
+    if (horizontal == vertical) {
+      // One axis exactly: a corner or an empty mask is not something this action
+      // can express, so refuse instead of half-applying it.
       return false;
     }
     View* view = m_focusedView;
     if (view->floating()) {
-      view->resizeFloatingEdge(edges, delta, widthAxis);
-      markArrange();
+      // No arrange here, for the same reason the fraction verbs do not arrange: an
+      // arrange re-clamps a float against the geometry the client has committed so
+      // far, and mid-resize that is still the size from before this action, so the
+      // opposite edge is pulled back to a bound computed for the old size.
+      view->resizeFloatingEdge(edges, delta);
       return true;
+    }
+    // Resolve the edges and open the session before anything is mutated: a layout
+    // that offers no boundary here, or cannot start the resize, must leave the
+    // window exactly as it was, including its maximize-to-edges state.
+    const uint32_t resolved = m_layout->sanitizeResizeEdges(view, edges);
+    if (resolved == 0) {
+      return false;
+    }
+    const wlr_box usable = tiledArea();
+    std::unique_ptr<ResizeGrab> session = m_layout->beginResize(view, resolved, usable);
+    if (session == nullptr) {
+      return false;
     }
     if (view->maximizedToEdges()) {
       view->setMaximizedToEdges(false);
     }
-    const wlr_box usable = tiledArea();
-    std::unique_ptr<ResizeGrab> session = m_layout->beginResize(view, edges, usable);
-    if (session == nullptr) {
-      return false;
-    }
     // A left or top edge travels against the axis, so growing from there moves in
     // the negative direction. The session applies one total delta from the state
     // it opened with, exactly like a single pointer move during a drag.
-    const bool outwardNegative = (edges & (WLR_EDGE_LEFT | WLR_EDGE_TOP)) != 0;
-    const double pixels = delta * (widthAxis ? usable.width : usable.height);
+    const bool outwardNegative = (resolved & (WLR_EDGE_LEFT | WLR_EDGE_TOP)) != 0;
+    const double pixels = delta * (horizontal ? usable.width : usable.height);
     const double travel = outwardNegative ? -pixels : pixels;
-    session->applyDelta(widthAxis ? travel : 0.0, widthAxis ? 0.0 : travel, usable);
-    if (session->unmaximizeOnBegin()) {
-      wlr_xdg_toplevel_set_maximized(view->toplevel(), false);
-    }
+    session->applyDelta(horizontal ? travel : 0.0, horizontal ? 0.0 : travel, usable);
     wlr_xdg_toplevel_set_maximized(view->toplevel(), false);
     ensureFocusedVisible();
     markArrange();
