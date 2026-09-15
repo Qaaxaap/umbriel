@@ -190,7 +190,7 @@ else
   right=dwl-a
 fi
 
-# A screen-facing edge has no boundary, so nothing may change -- including the
+# A screen-facing edge has no boundary, so nothing may change, including the
 # window's maximize-to-edges state, since unmaximizing here would move it.
 focus "$left"
 "$UMBRIEL" msg window-toggle-maximize-to-edges > /dev/null
@@ -468,6 +468,21 @@ if (( mid_w <= base_w || mid_w >= end_w || drift < -8 || drift > 8 )); then
 fi
 if (( settled_w != end_w || settled_x != end_x )); then
   echo "the resize did not settle: $end_w+$end_x -> $settled_w+$settled_x"
+  exit 1
+fi
+
+
+# Repeated actions accumulate from the logical target while the first animation
+# is in flight. Re-anchoring from the intermediate scene position would walk the
+# right edge even though both actions move only the left edge.
+repeat_right=$((settled_x + settled_w))
+"$UMBRIEL" msg window-modify-width-left:0.1 > /dev/null
+sleep 0.25
+"$UMBRIEL" msg window-modify-width-left:0.1 > /dev/null
+sleep 2.2
+read -r repeated_x _ repeated_w _ < <(box float-anim)
+if (( repeated_w != settled_w + OUTPUT_W / 5 || repeated_x + repeated_w != repeat_right )); then
+  echo "repeated width-left drifted its pinned edge: ${settled_x}+${settled_w} -> ${repeated_x}+${repeated_w}"
   exit 1
 fi
 

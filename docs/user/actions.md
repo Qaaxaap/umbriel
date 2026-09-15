@@ -231,8 +231,9 @@ their visual directions; see [Vertical strips](layout.md#vertical-strips).
   nothing at all), and a floating window grows from the named edge within its
   client size hints. While a scrolling strip is narrower than the viewport and
   `layout.scrolling.center_underfull_strip` is on, the strip resizes around its
-  center instead and both edges move symmetrically; a pointer drag on the same
-  edge behaves the same way.
+  center and both edges move symmetrically. A center-positioned master area
+  likewise moves both margins when either edge is resized. Pointer drags behave
+  the same way in both cases.
 - **Launch tokens.** `spawn:` exports a one-shot `XDG_ACTIVATION_TOKEN` and a
   matching `DESKTOP_STARTUP_ID` to the command. A single-instance application
   can pass that token to its existing window so Umbriel reveals it, including

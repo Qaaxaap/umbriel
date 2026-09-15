@@ -2047,6 +2047,16 @@ namespace umbriel {
     const double target = std::clamp(*current + delta, 0.1, 1.0);
     const XdgSizeHints hints = xdgSizeHints(m_toplevel);
     const auto [basisWidth, basisHeight] = floatingSize();
+    // A pending size and the position animation target form one logical box.
+    // Anchor that box rather than the in-flight scene node, so repeated actions
+    // keep the same far edge while the previous resize is still animating.
+    const wlr_box& geo = m_toplevel->base->geometry;
+    const wlr_box anchor{
+        .x = layoutTargetX() + geo.x,
+        .y = layoutTargetY() + geo.y,
+        .width = basisWidth,
+        .height = basisHeight,
+    };
     const int width = widthAxis ? clampXdgWidth(floatingFractionSize(target, usable.width), hints) : basisWidth;
     const int height = widthAxis ? basisHeight : clampXdgHeight(floatingFractionSize(target, usable.height), hints);
     if (width <= 0 || height <= 0) {
@@ -2065,12 +2075,9 @@ namespace umbriel {
     // the geometry that actually arrived. finishFloatingResize ends the session but
     // leaves the anchor until the request settles, so that commit both re-pins the
     // edge and retires the anchor.
-    const wlr_box& geo = m_toplevel->base->geometry;
-    const FloatingPoint anchoredOrigin = anchoredContentOrigin(
-        {.x = m_sceneTree->node.x + geo.x, .y = m_sceneTree->node.y + geo.y, .width = geo.width, .height = geo.height},
-        edges, {.x = 0, .y = 0, .width = width, .height = height}
-    );
-    beginFloatingResize(edges);
+    const FloatingPoint anchoredOrigin =
+        anchoredContentOrigin(anchor, edges, {.x = 0, .y = 0, .width = width, .height = height});
+    m_floating.beginResize(anchor, edges);
     dropMaximizedForResize();
     requestFloatingSize(width, height);
     beginResizeAnimation(width, height);
