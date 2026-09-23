@@ -207,6 +207,7 @@ if build_tests
     'shared-output-transform-transition',
     'shared-sdr-capture-lock',
     'shared-sdr-capture-storage-change',
+    'capture-read-format',
   ]
     test(
       'color-' + case_name,
@@ -229,25 +230,6 @@ if build_tests
   test(
     'capture-pacing',
     umbrielfx_capture_pacing_test,
-    suite: 'umbrielfx',
-  )
-
-  # The single SHM readback format ext-image-copy-capture publishes has to be the
-  # BGRA byte order capture consumers expect, not the RGBx order the GL_RGBA fx
-  # render targets report.
-  umbrielfx_read_format_test = executable(
-    'umbrielfx-read-format-test',
-    'tests/read_format.c',
-    c_args: umbrielfx_c_args,
-    dependencies: umbrielfx_deps,
-    include_directories: [umbrielfx_inc, umbrielfx_internal_inc],
-    link_with: umbrielfx_lib,
-    build_by_default: false,
-  )
-
-  test(
-    'preferred-read-format',
-    umbrielfx_read_format_test,
     suite: 'umbrielfx',
   )
 
