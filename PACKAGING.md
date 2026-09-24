@@ -199,12 +199,14 @@ An external service manager can invoke `start-umbriel` as its service process.
 That fast path does not enter the login shell and instead preserves the
 manager-provided environment.
 
-The managed path imports the resulting login environment and starts
-`umbriel.service`. The service also inherits variables generated from
-`environment.d`. Once ready, Umbriel publishes its graphical session variables
-and validated `[environment]` assignments to the systemd user manager, then
-starts `umbriel-session.target`. Arbitrary configured values are not copied to
-traditional D-Bus activation. The configured values remain in the user manager
+The managed path imports the resulting login environment except for `PATH`,
+then starts `umbriel.service`. The service inherits `PATH` and other variables
+generated from `environment.d`, so the user manager's `PATH` takes precedence
+over the login profile's value. Once ready, Umbriel publishes its graphical
+session variables and validated `[environment]` assignments to the systemd user
+manager, then starts `umbriel-session.target`. Login-profile values other than
+`PATH` are also copied to traditional D-Bus activation. Arbitrary configured
+values are not copied there. The configured values remain in the user manager
 for its lifetime. The launcher activates `umbriel-shutdown.target` and removes
 the graphical variables after Umbriel exits.
 
