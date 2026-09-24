@@ -1781,7 +1781,17 @@ namespace umbriel {
   void View::onAcceptClientMaximizeRequests(void* data) {
     auto* self = static_cast<View*>(data);
     self->m_acceptClientMaximizeIdle = nullptr;
-    self->m_acceptClientMaximizeRequests = self->m_mapped;
+    if (!self->m_mapped || self->m_acceptClientMaximizeRequests) {
+      return;
+    }
+    // Clients such as kitty restore maximize just after their first frame. Keep the gate closed until the client
+    // acknowledges the configure that carries the opening layout.
+    const wlr_xdg_surface* surface = self->m_toplevel->base;
+    if (surface->configure_idle != nullptr || !wl_list_empty(&surface->configure_list)) {
+      self->m_acceptClientMaximizeSerial = surface->scheduled_serial;
+      return;
+    }
+    self->m_acceptClientMaximizeRequests = true;
   }
 
   void View::onRequestFullscreen(wl_listener* listener, void* /*data*/) {
@@ -3091,6 +3101,7 @@ namespace umbriel {
     m_openingParentRequested = false;
     m_acceptClientMaximizeRequests = false;
     m_consumeRestoredMaximizeRequest = false;
+    m_acceptClientMaximizeSerial.reset();
     if (m_acceptClientMaximizeIdle != nullptr) {
       wl_event_source_remove(m_acceptClientMaximizeIdle);
       m_acceptClientMaximizeIdle = nullptr;
@@ -3486,6 +3497,12 @@ namespace umbriel {
     updateForeignState();
     if (Output* output = currentOutput()) {
       output->updateHdr();
+    }
+    if (m_mapped
+        && m_acceptClientMaximizeSerial
+        && static_cast<int32_t>(m_toplevel->base->current.configure_serial - *m_acceptClientMaximizeSerial) >= 0) {
+      m_acceptClientMaximizeSerial.reset();
+      m_acceptClientMaximizeRequests = true;
     }
     // The first root commit after the opening gate settles the restore sequence.
     // A later maximize request is client intent and must not be consumed.
