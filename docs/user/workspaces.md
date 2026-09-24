@@ -191,11 +191,11 @@ monitor's center so subsequent actions continue there. Window and column moves
 do the same by default. With `input.cursor.follows_focus` enabled, they warp to
 the moved focused window's visible center instead.
 
-The `window-move-to-workspace-silent` actions are the exception: the window
-lands on its target — named, or the `-silent-next` / `-silent-previous`
-neighbour — while the seat stays where it was, so the source workspace hands
-focus to the replacement window it selects, an emptied source clears the
-keyboard focus, and the cursor does not move.
+The `window-move-to-workspace-silent` actions, including the `-silent-next` and
+`-silent-previous` forms, are the exception: the window lands on its target
+while the seat stays where it was. The source workspace hands focus to the
+replacement window it selects, an emptied source clears the keyboard focus, and
+the cursor does not move.
 
 ## Inspect workspace state
 
