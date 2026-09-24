@@ -1541,7 +1541,10 @@ namespace umbriel {
     double oldSy = 0;
     View* oldView = m_server->viewAt(oldX, oldY, &oldSurface, &oldSx, &oldSy);
     const bool entered = refocus || view != oldView;
-    const bool alreadyFocused = view->workspace() != nullptr && view->workspace()->focusedView() == view;
+    // Workspace focus is remembered independently from the seat. A pinned window from another workspace can own the
+    // seat while this view remains its active workspace's remembered focus, so only seat-global activation makes this
+    // handoff redundant.
+    const bool alreadyFocused = view->activated();
     if (entered && !alreadyFocused) {
       m_server->focusView(view, FocusReason::PointerHover);
       // Scroll may have moved another surface under the cursor; refresh hit-test for

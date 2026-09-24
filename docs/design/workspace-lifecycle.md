@@ -93,6 +93,11 @@ fall inside it. After that one refresh, hover returns to geometric
 border-crossing detection so scrolling animations cannot cascade focus through
 windows moving beneath the pointer.
 
+The hover decision compares against seat-global activation, not a workspace's
+remembered focus. A pinned window can retain seat focus while following the
+output away from its owning workspace; leaving it must still activate the view
+under the pointer even when the active workspace already remembers that view.
+
 This distinction matters when a second window maps away from the cursor and
 when returning to a workspace whose remembered focused window is elsewhere. It
 also covers explicit strip scrolling, column resizing or reordering, and leaving
@@ -208,6 +213,8 @@ workspace is covered by
 [`tests/harness/checks/511_spawn_hover_focus.sh`](../../tests/harness/checks/511_spawn_hover_focus.sh)
 and
 [`tests/harness/checks/512_workspace_return_hover_focus.sh`](../../tests/harness/checks/512_workspace_return_hover_focus.sh).
+The handoff from a pinned window owned by another workspace is covered by
+[`tests/harness/checks/512_pinned_workspace_hover_focus.sh`](../../tests/harness/checks/512_pinned_workspace_hover_focus.sh).
 Scrolling reveal animations are kept from cascading hover focus by
 [`tests/harness/checks/513_scrolling_hover_focus_stability.sh`](../../tests/harness/checks/513_scrolling_hover_focus_stability.sh).
 Command-driven strip scrolling, resizing, column movement, and fullscreen exit
