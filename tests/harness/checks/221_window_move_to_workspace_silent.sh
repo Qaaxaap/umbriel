@@ -138,7 +138,6 @@ assert_active TWO
 # An emptied source keeps its now-empty workspace active and clears the
 # keyboard focus, rather than switching to the destination.
 accepts "workspace-switch:ONE"
-sleep 0.2
 spawn_client silent-last
 wait_for_windows 3
 accepts "window-focus:$(id_of silent-last)"
