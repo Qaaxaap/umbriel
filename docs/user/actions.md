@@ -255,8 +255,6 @@ their visual directions; see [Vertical strips](layout.md#vertical-strips).
   toplevel activation requests from docks and taskbars. Pointer-driven and
   automatic focus changes never move the cursor. `window-focus:<window-id>`
   follows this setting, while `window-focus-warp:<window-id>` always moves it.
-  The `window-move-to-workspace-silent` actions never move it, because they do
-  not move the seat either.
 - **Hidden scratchpads.** Either ID-targeted focus action summons a matching
   hidden scratchpad window to the output under the pointer before focusing it.
 - **Across outputs.** Directions never wrap: with no monitor in that direction
