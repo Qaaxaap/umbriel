@@ -107,6 +107,11 @@ player leaves video fullscreen through XDG shell. In each case, a small motion
 inside the window under the pointer is sufficient; the pointer does not need to
 leave and re-enter its border.
 
+Normal tiled close replacement preserves geometric proximity between columns.
+When it must cross into a surviving column with several rows, it resolves those
+rows through the global focus history. Visual row order describes placement,
+not which member the user focused before opening the window that just closed.
+
 Closing a focused Dwindle or master tile is a bounded exception. Umbriel records
 the pointer position only when the closing view owns keyboard focus, is visibly
 beneath the pointer, and the position lies inside its current presented box. It chooses the
@@ -215,6 +220,8 @@ and
 [`tests/harness/checks/512_workspace_return_hover_focus.sh`](../../tests/harness/checks/512_workspace_return_hover_focus.sh).
 The handoff from a pinned window owned by another workspace is covered by
 [`tests/harness/checks/512_pinned_workspace_hover_focus.sh`](../../tests/harness/checks/512_pinned_workspace_hover_focus.sh).
+Scrolling close restoration within a stacked neighboring column is covered by
+[`tests/harness/checks/225_scrolling_close_focus_memory.sh`](../../tests/harness/checks/225_scrolling_close_focus_memory.sh).
 Scrolling reveal animations are kept from cascading hover focus by
 [`tests/harness/checks/513_scrolling_hover_focus_stability.sh`](../../tests/harness/checks/513_scrolling_hover_focus_stability.sh).
 Command-driven strip scrolling, resizing, column movement, and fullscreen exit

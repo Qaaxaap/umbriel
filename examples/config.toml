@@ -136,7 +136,8 @@ numlock_toggle = true
 # ==============================================================================
 # Layout
 # New scrolling-layout windows start at half the output width. Without this
-# setting, each application chooses its starting width.
+# setting, each application chooses its starting width. Stacked columns retain
+# their most recently focused row when focus leaves and later returns.
 # https://docs.noctalia.dev/umbriel/layout/
 [layout]
 extent_presets = [0.333, 0.5, 0.667]

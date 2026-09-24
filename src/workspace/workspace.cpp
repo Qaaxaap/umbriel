@@ -1233,18 +1233,26 @@ namespace umbriel {
         return candidate;
       }
     }
-    for (int targetColumn = columnIndex - 1; targetColumn >= 0; --targetColumn) {
-      for (View* candidate : columns[static_cast<size_t>(targetColumn)].views) {
-        if (mappedCandidate(candidate)) {
+    const auto recentInColumn = [&](int targetColumn) -> View* {
+      const auto& members = columns[static_cast<size_t>(targetColumn)].views;
+      for (const auto& entry : m_group->server()->registry().all()) {
+        View* candidate = entry.get();
+        if (mappedCandidate(candidate) && std::ranges::find(members, candidate) != members.end()) {
           return candidate;
         }
       }
+      return nullptr;
+    };
+    // Keep geometric column proximity, but preserve focus memory within that column. Row order is placement, not
+    // history: closing a temporary neighboring column should return to the row the user was working in.
+    for (int targetColumn = columnIndex - 1; targetColumn >= 0; --targetColumn) {
+      if (View* candidate = recentInColumn(targetColumn)) {
+        return candidate;
+      }
     }
     for (int targetColumn = columnIndex + 1; targetColumn < static_cast<int>(columns.size()); ++targetColumn) {
-      for (View* candidate : columns[static_cast<size_t>(targetColumn)].views) {
-        if (mappedCandidate(candidate)) {
-          return candidate;
-        }
+      if (View* candidate = recentInColumn(targetColumn)) {
+        return candidate;
       }
     }
 
