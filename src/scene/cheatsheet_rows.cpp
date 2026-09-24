@@ -704,6 +704,7 @@ namespace umbriel {
     collapseWorkspaceRuns(KeybindAction::WorkspaceSwitch);
     collapseWorkspaceRuns(KeybindAction::ColumnMoveToWorkspace);
     collapseWorkspaceRuns(KeybindAction::WindowMoveToWorkspace);
+    collapseWorkspaceRuns(KeybindAction::WindowMoveToWorkspaceSilent);
 
     return rows;
   }
