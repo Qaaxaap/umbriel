@@ -1217,40 +1217,23 @@ namespace umbriel {
       return true;
     }
 
-    // Workspace a window move in `Direction` lands on, or null when there is none. No wrap-around.
-    template <int Direction> Workspace* adjacentWindowMoveWorkspace(Workspace* workspace) {
-      if (workspace == nullptr || workspace->group() == nullptr) {
-        return nullptr;
-      }
-      const size_t index = workspace->index();
-      if (Direction < 0 && index == 0) {
-        return nullptr;
-      }
-      Workspace* target = workspace->group()->workspaceAt(index + static_cast<size_t>(Direction));
-      return target == workspace ? nullptr : target;
-    }
-
-    template <int Direction>
+    template <int Direction, bool Follow>
     bool actionWindowMoveToWorkspaceAdjacent(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
       Workspace* workspace = windowActionWorkspace(server);
-      Workspace* target = adjacentWindowMoveWorkspace<Direction>(workspace);
-      if (target != nullptr) {
-        if (View* view = workspace->focusedView()) {
-          moveViewToWorkspace(server, *view, *target);
-        }
+      if (workspace == nullptr || workspace->group() == nullptr) {
+        return true;
       }
-      return true;
-    }
-
-    // The same adjacency without the follow: the window lands next door while the seat stays where it was.
-    template <int Direction>
-    bool actionWindowMoveToWorkspaceAdjacentSilent(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
-      Workspace* workspace = windowActionWorkspace(server);
-      Workspace* target = adjacentWindowMoveWorkspace<Direction>(workspace);
-      if (target != nullptr) {
-        if (View* view = workspace->focusedView()) {
-          moveViewToWorkspace(server, *view, *target, /*follow=*/false);
-        }
+      WorkspaceGroup* group = workspace->group();
+      const size_t index = workspace->index();
+      if (Direction < 0 && index == 0) {
+        return true;
+      }
+      Workspace* target = group->workspaceAt(index + static_cast<size_t>(Direction));
+      if (target == nullptr || target == workspace) {
+        return true;
+      }
+      if (View* view = workspace->focusedView()) {
+        moveViewToWorkspace(server, *view, *target, Follow);
       }
       return true;
     }
@@ -1773,10 +1756,10 @@ namespace umbriel {
         &actionWorkspace,
         &actionWorkspace,
         &actionWorkspace,
-        &actionWindowMoveToWorkspaceAdjacentSilent<1>,
-        &actionWindowMoveToWorkspaceAdjacentSilent<-1>,
-        &actionWindowMoveToWorkspaceAdjacent<1>,
-        &actionWindowMoveToWorkspaceAdjacent<-1>,
+        &actionWindowMoveToWorkspaceAdjacent<1, false>,
+        &actionWindowMoveToWorkspaceAdjacent<-1, false>,
+        &actionWindowMoveToWorkspaceAdjacent<1, true>,
+        &actionWindowMoveToWorkspaceAdjacent<-1, true>,
         &actionConfigReload,
         &actionKeyboardLayoutNext,
         &actionShortcutsInhibitToggle,
