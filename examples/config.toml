@@ -184,6 +184,13 @@ default_pinned = true
 # border_color_focused = "#E5C07BFF"
 # border_color_unfocused = "#5C4A2AFF"
 
+# Leave an application that draws its own corners and shadow undecorated.
+# [[window_rule]]
+# match.app_id = "^org[.]gnome[.]TextEditor$"
+# border_width = 0
+# corner_radius = 0
+# shadow = false
+
 # ==============================================================================
 # Layer rules
 # https://docs.noctalia.dev/umbriel/layer-rules/

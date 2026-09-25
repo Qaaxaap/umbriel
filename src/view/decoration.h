@@ -38,6 +38,10 @@ namespace umbriel {
     void setBorderRawColor(const std::array<float, 4>& baseColor, float alpha);
     // [colors.border] with the last applied rule's overrides.
     [[nodiscard]] const Config::Colors::Border& borderColors() const { return m_borderColors; }
+    // [appearance] border_width and corner_radius with the last applied rule's overrides. The outer ring stays global.
+    [[nodiscard]] int borderWidth() const { return m_borderWidth; }
+    [[nodiscard]] int cornerRadius() const { return m_cornerRadius; }
+    [[nodiscard]] int totalBorderWidth() const { return m_borderWidth + config().appearance.outerBorderWidth; }
     // True when the drawn ring no longer matches the given content size, i.e. a
     // client commit changed geometry behind the layout's back.
     [[nodiscard]] bool borderGeometryStale(int contentWidth, int contentHeight) const;
@@ -47,8 +51,9 @@ namespace umbriel {
         wlr_scene_tree* snapshot, const std::array<float, 4>& innerColor, float opacity,
         std::vector<BorderSnapshot>& out
     ) const;
-    // Take the rule's blur options and border colors.
-    void applyRule(const ResolvedWindowRule& rule);
+    // Take the rule's blur options, border colors, and decoration overrides. True when the ring geometry, corner
+    // radius, or shadow switch changed, so the caller redraws them.
+    bool applyRule(const ResolvedWindowRule& rule);
 
     // Blur
     [[nodiscard]] SurfaceBlurOptions blurOptions() const { return m_blurOptions; }
@@ -87,6 +92,9 @@ namespace umbriel {
     wlr_scene_tree* m_borderTree = nullptr;
     wlr_scene_border* m_border = nullptr;
     Config::Colors::Border m_borderColors = config().colors.border;
+    int m_borderWidth = config().appearance.borderWidth;
+    int m_cornerRadius = config().appearance.cornerRadius;
+    std::optional<bool> m_ruleShadow;
     SurfaceBlur m_blur;
     SurfaceBlurOptions m_blurOptions;
     SurfaceBlurOptions m_popupBlurOptions;

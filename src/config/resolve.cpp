@@ -326,6 +326,15 @@ namespace umbriel {
       if (rule.borderColorOuter) {
         resolved.borderColorOuter = rule.borderColorOuter;
       }
+      if (rule.borderWidth) {
+        resolved.borderWidth = rule.borderWidth;
+      }
+      if (rule.cornerRadius) {
+        resolved.cornerRadius = rule.cornerRadius;
+      }
+      if (rule.shadow) {
+        resolved.shadow = rule.shadow;
+      }
     }
     return resolved;
   }

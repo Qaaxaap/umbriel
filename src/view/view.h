@@ -112,6 +112,9 @@ namespace umbriel {
     [[nodiscard]] bool shadowPooled() const { return m_decoration.shadowPooled(); }
     // Border colors after this window's rule overrides; overview cards draw with the same ones.
     [[nodiscard]] const Config::Colors::Border& borderColors() const { return m_decoration.borderColors(); }
+    // border_width and corner_radius after this window's rule overrides; overview cards draw with the same ones.
+    [[nodiscard]] int decorationBorderWidth() const { return m_decoration.borderWidth(); }
+    [[nodiscard]] int decorationCornerRadius() const { return m_decoration.cornerRadius(); }
     // Opacity multiplier the overview applies to windows it leaves on screen (pinned ones) while it opens and closes.
     void setOverviewOpacity(float opacity);
     [[nodiscard]] wlr_scene_tree* homeTree() const;
@@ -467,7 +470,8 @@ namespace umbriel {
     // True while the border ring exists and is showing. Fullscreen keeps the
     // tree but disables it, so the pointer alone does not answer this.
     [[nodiscard]] bool decorated() const;
-    // Border thickness actually being drawn, 0 when undecorated.
+    // Border thickness actually being drawn, 0 when undecorated. Follows the window's own border_width rule when it
+    // sets one, the global appearance.border_width otherwise.
     [[nodiscard]] int borderInset() const;
     // Radius to round the surface itself by: a fullscreen window is square even
     // though its borders are only hidden, not destroyed.

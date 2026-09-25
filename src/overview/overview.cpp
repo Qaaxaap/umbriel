@@ -268,14 +268,15 @@ namespace umbriel {
     const float presentedOpacity = view->presentedOpacity() * cardOpacity;
 
     const auto& appearance = config().appearance;
-    const int total = appearance.totalBorderWidth();
+    const int borderWidth = view->decorationBorderWidth();
+    const int total = borderWidth + appearance.outerBorderWidth;
     const bool decorated = total > 0 && !view->toplevel()->current.fullscreen && !view->maximizedToEdges();
-    const int scaledRadius = static_cast<int>(std::lround(appearance.cornerRadius * z));
+    const int scaledRadius = static_cast<int>(std::lround(view->decorationCornerRadius() * z));
     const int outerRadius = decorated ? scaledRadius : 0;
     const auto scaledWidth = [z](int width) {
       return width > 0 ? std::max(1, static_cast<int>(std::lround(width * z))) : 0;
     };
-    const int innerWidth = scaledWidth(appearance.borderWidth);
+    const int innerWidth = scaledWidth(borderWidth);
     const int outerWidth = scaledWidth(appearance.outerBorderWidth);
     const int surfaceRadius = nestedRadius(outerRadius, innerWidth + outerWidth);
     const bool borderVisible = decorated && innerWidth + outerWidth > 0;
@@ -1098,6 +1099,9 @@ namespace umbriel {
                 .node = copy,
                 .innerColor = innerColor,
                 .outerColor = outerColor,
+                .innerWidth = card.view->decorationBorderWidth(),
+                .outerWidth = config().appearance.outerBorderWidth,
+                .cornerRadius = card.view->decorationCornerRadius(),
             }
         );
       }

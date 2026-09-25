@@ -2122,7 +2122,10 @@ namespace umbriel {
             .real("blur_ignore_alpha", 0.0, 1.0, rule.blurIgnoreAlpha)
             .color("border_color_focused", rule.borderColorFocused)
             .color("border_color_unfocused", rule.borderColorUnfocused)
-            .color("border_color_outer", rule.borderColorOuter);
+            .color("border_color_outer", rule.borderColorOuter)
+            .integer("border_width", 0, 100, rule.borderWidth)
+            .integer("corner_radius", 0, 100, rule.cornerRadius)
+            .boolean("shadow", rule.shadow);
         if (const toml::node* n = keys.take("default_floating_size")) {
           const auto* table = n->as_table();
           if (table == nullptr) {

@@ -1089,15 +1089,16 @@ namespace umbriel {
   }
 
   void Server::CloseSnapshot::applyShrink(int width, int height) {
-    const auto& appearance = config().appearance;
+    // Every border in a snapshot comes from one window, so the first one carries its ring.
+    const BorderSnapshot captured = m_borders.empty() ? BorderSnapshot{} : m_borders.front();
     // Once the box is thinner than its own ring, shrink the ring with it so the decorated geometry collapses
     // continuously instead of disappearing in one frame.
-    const int fullExtent = appearance.borderWidth + appearance.outerBorderWidth;
+    const int fullExtent = captured.innerWidth + captured.outerWidth;
     const double ringScale =
         fullExtent > 0 ? std::clamp(static_cast<double>(std::min(width, height)) / (2 * fullExtent), 0.0, 1.0) : 1.0;
-    const int innerWidth = static_cast<int>(std::lround(appearance.borderWidth * ringScale));
-    const int outerWidth = static_cast<int>(std::lround(appearance.outerBorderWidth * ringScale));
-    const int radius = static_cast<int>(std::lround(appearance.cornerRadius * ringScale));
+    const int innerWidth = static_cast<int>(std::lround(captured.innerWidth * ringScale));
+    const int outerWidth = static_cast<int>(std::lround(captured.outerWidth * ringScale));
+    const int radius = static_cast<int>(std::lround(captured.cornerRadius * ringScale));
     const BorderRing ring = makeBorderRing(width, height, radius, innerWidth, outerWidth);
     const bool ringVisible = innerWidth + outerWidth > 0;
     const wlr_box treeClip = m_borders.empty() || !ringVisible ? wlr_box{0, 0, width, height} : ring.box;

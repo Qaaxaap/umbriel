@@ -2041,12 +2041,11 @@ namespace umbriel {
 
   bool View::decorated() const { return m_decoration.bordersVisible(); }
 
-  int View::borderInset() const { return decorated() ? config().appearance.totalBorderWidth() : 0; }
+  int View::borderInset() const { return decorated() ? m_decoration.totalBorderWidth() : 0; }
 
   int View::surfaceRadius() const {
-    return decorated() && !m_toplevel->scheduled.fullscreen
-        ? nestedRadius(config().appearance.cornerRadius, borderInset())
-        : 0;
+    return decorated() && !m_toplevel->scheduled.fullscreen ? nestedRadius(m_decoration.cornerRadius(), borderInset())
+                                                            : 0;
   }
 
   void View::setBorderFocused(bool focused) {
@@ -2198,9 +2197,7 @@ namespace umbriel {
   void View::updateShadow(int contentWidth, int contentHeight) {
     UMBRIEL_ZONE("View::updateShadow");
     const int borderTotal = borderInset();
-    m_decoration.updateShadow(
-        contentWidth, contentHeight, borderTotal, decorated() ? config().appearance.cornerRadius : 0
-    );
+    m_decoration.updateShadow(contentWidth, contentHeight, borderTotal, decorated() ? m_decoration.cornerRadius() : 0);
     m_decoration.setShadowAnimationSource(&m_contentTree->node);
   }
 
@@ -4060,7 +4057,7 @@ namespace umbriel {
         }
       }
       if (usable.width > 0 && usable.height > 0 && keepWidth > 0 && keepHeight > 0) {
-        const int decoration = config().appearance.totalBorderWidth();
+        const int decoration = m_decoration.totalBorderWidth();
         const int minX = usable.x + decoration;
         const int minY = usable.y + decoration;
         const int maxX = usable.x + usable.width - decoration - keepWidth;
@@ -4597,7 +4594,12 @@ namespace umbriel {
   void View::applyDynamicRules(const ResolvedWindowRule* resolved) {
     const ResolvedWindowRule& rule = resolved != nullptr ? *resolved : resolvedRules();
     m_appliedRuleState = ruleState();
-    m_decoration.applyRule(rule);
+    // Tile spacing stays on the global border width, so a decoration change redraws this window without an arrange.
+    if (m_decoration.applyRule(rule)) {
+      updateBorderGeometry();
+      applyCornerRadius();
+      updateShadow();
+    }
     const Config::Colors::Border& colors = m_decoration.borderColors();
     const std::array<float, 4>& targetBorder = m_borderFocusedState ? colors.focused : colors.unfocused;
     const auto& borderAnimation = config().animation.border;

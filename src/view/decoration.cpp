@@ -43,13 +43,10 @@ namespace umbriel {
       return;
     }
 
-    const auto& appearance = config().appearance;
+    const int outerWidth = config().appearance.outerBorderWidth;
     applyBorderGeometry(
-        m_border,
-        makeBorderRing(
-            contentWidth, contentHeight, appearance.cornerRadius, appearance.borderWidth, appearance.outerBorderWidth
-        ),
-        appearance.borderWidth, appearance.outerBorderWidth
+        m_border, makeBorderRing(contentWidth, contentHeight, m_cornerRadius, m_borderWidth, outerWidth), m_borderWidth,
+        outerWidth
     );
   }
 
@@ -75,9 +72,8 @@ namespace umbriel {
     if (m_border == nullptr) {
       return false;
     }
-    const auto& appearance = config().appearance;
     const BorderRing ring = makeBorderRing(
-        contentWidth, contentHeight, appearance.cornerRadius, appearance.borderWidth, appearance.outerBorderWidth
+        contentWidth, contentHeight, m_cornerRadius, m_borderWidth, config().appearance.outerBorderWidth
     );
     return m_border->width != ring.box.width || m_border->height != ring.box.height;
   }
@@ -103,13 +99,20 @@ namespace umbriel {
     wlr_scene_node_copy_animations_for_snapshot(&copy->node, &m_borderTree->node);
     // Straight colours at the opacity the ring is drawn with right now, so the fade starts from what is on screen
     // and stays in step with the content buffers, which keep their current opacity as their base.
-    BorderSnapshot captured{.node = copy, .innerColor = innerColor, .outerColor = m_borderColors.outer};
+    BorderSnapshot captured{
+        .node = copy,
+        .innerColor = innerColor,
+        .outerColor = m_borderColors.outer,
+        .innerWidth = m_borderWidth,
+        .outerWidth = config().appearance.outerBorderWidth,
+        .cornerRadius = m_cornerRadius,
+    };
     captured.innerColor[3] *= opacity;
     captured.outerColor[3] *= opacity;
     out.push_back(captured);
   }
 
-  void ViewDecoration::applyRule(const ResolvedWindowRule& rule) {
+  bool ViewDecoration::applyRule(const ResolvedWindowRule& rule) {
     const auto& border = config().colors.border;
     m_borderColors = {
         .focused = rule.borderColorFocused.value_or(border.focused),
@@ -126,6 +129,15 @@ namespace umbriel {
         .enabled = rule.blurPopups.value_or(false),
         .optimized = rule.blurOptimized,
     };
+    const auto& appearance = config().appearance;
+    const int borderWidth = rule.borderWidth.value_or(appearance.borderWidth);
+    const int cornerRadius = rule.cornerRadius.value_or(appearance.cornerRadius);
+    const bool changed = borderWidth != m_borderWidth || cornerRadius != m_cornerRadius || rule.shadow != m_ruleShadow;
+    m_borderWidth = borderWidth;
+    m_cornerRadius = cornerRadius;
+    m_ruleShadow = rule.shadow;
+    m_shadow.setEnabled(rule.shadow);
+    return changed;
   }
 
   // Blur

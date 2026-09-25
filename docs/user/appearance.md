@@ -95,7 +95,9 @@ decorations. Restart applications after changing it because decoration protocol
 availability is fixed when an application connects.
 
 Borders render outside window content and are included in layout spacing.
-`corner_radius = 0` keeps every contour square.
+`corner_radius = 0` keeps every contour square. A
+[window rule](window-rules.md#decoration) can override `border_width` and
+`corner_radius` for the windows it matches.
 
 ### Blur
 
@@ -151,4 +153,6 @@ A window's shadow falls on everything below it, including other floating,
 pinned, or scratchpad windows it overlaps. Tiled windows never shadow each
 other. Shadows are hidden for fullscreen windows. During a
 [custom window animation](animation.md#custom-glsl-shaders), the shadow follows
-the visible shape produced by the shader.
+the visible shape produced by the shader. A
+[window rule](window-rules.md#decoration) can turn the shadow on or off for the
+windows it matches.
