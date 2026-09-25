@@ -82,7 +82,7 @@ FOCUS_ID=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "cyclic-a")
 "$UMBRIEL" msg window-move-to-workspace-previous > /dev/null
 expect_window_at cyclic-a "HEADLESS-1:3" "window-move-to-workspace-previous"
 
-# Without the key the step stops, which is what every release before it did.
+# Without the key the step stops at the ends.
 sed -i 's/^cyclic_workspaces = true$/cyclic_workspaces = false/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
 "$UMBRIEL" msg workspace-switch:1 > /dev/null

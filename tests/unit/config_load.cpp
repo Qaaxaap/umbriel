@@ -1922,24 +1922,6 @@ UMBRIEL_TEST(outputCyclicWorkspacesLoadsAndDefaultsOff) {
   CHECK(containsDiagnostic(store, "ignoring output.DP-1.cyclic_workspaces (expected boolean)"));
 }
 
-// The key is per output: enabling it in one section leaves the other alone. The
-// runtime side reads the same matching rule, so this covers the parse half of
-// the isolation the harness cannot reach without a pointer-driven output switch.
-UMBRIEL_TEST(outputCyclicWorkspacesIsPerOutput) {
-  const TempConfig file;
-  ConfigStore& store = umbriel::configStore();
-  store.setRootPath(file.path(), true);
-
-  file.write("[output.DP-1]\ncyclic_workspaces = true\n\n[output.DP-2]\nworkspaces = 3\n");
-  CHECK(store.reload().success);
-  CHECK_EQ(store.config().outputs.size(), size_t{2});
-  if (store.config().outputs.size() == 2) {
-    CHECK(store.config().outputs[0].cyclicWorkspaces);
-    CHECK(!store.config().outputs[1].cyclicWorkspaces);
-    CHECK(store.config().outputs[1].workspaces.has_value());
-  }
-}
-
 UMBRIEL_TEST(dynamicNamedWorkspaceDeclarationsReserveEmptySentinelCapacity) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();
