@@ -203,6 +203,7 @@ namespace umbriel {
     // Continues from the frozen time, so animation time never runs backwards.
     void resumeAnimationClock();
     [[nodiscard]] bool animationClockFrozen() const { return m_frozenAnimationClockMsec.has_value(); }
+    void emitRendererLostForTest();
 #endif
     [[nodiscard]] Ipc* ipc() const { return m_ipc.get(); }
     // Owners register themselves for the frame tick. The registry is kept in phase order, so the three traversals above
@@ -434,6 +435,7 @@ namespace umbriel {
     static void onOutputLayoutChange(wl_listener* listener, void* data);
     static void onToplevelCaptureRequest(wl_listener* listener, void* data);
     static void onRendererLost(wl_listener* listener, void* data);
+    static void onRendererRecoveryIdle(void* data);
     static int onBackgroundFrameTimer(void* data);
     static int onStartupRulesTimer(void* data);
     static int onTerminateSignal(int signal, void* data);
@@ -716,6 +718,9 @@ namespace umbriel {
     wl_event_source* m_ipcWindowsIdle = nullptr;
     wl_event_source* m_ipcWorkspacesIdle = nullptr;
     wl_event_source* m_displacedRestoreIdle = nullptr;
+    // Coalesces renderer-loss notifications until their signal dispatch and
+    // active render calls have unwound.
+    wl_event_source* m_rendererRecoveryIdle = nullptr;
     struct DisplacedWorkspaceSelection {
       std::string outputName;
       std::string workspaceName;

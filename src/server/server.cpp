@@ -569,6 +569,10 @@ namespace umbriel {
 
   Server::~Server() {
     m_stopping = true;
+    if (m_rendererRecoveryIdle != nullptr) {
+      wl_event_source_remove(m_rendererRecoveryIdle);
+      m_rendererRecoveryIdle = nullptr;
+    }
     if (m_protocolLogger != nullptr) {
       wl_protocol_logger_destroy(m_protocolLogger);
       m_protocolLogger = nullptr;
@@ -1344,6 +1348,8 @@ namespace umbriel {
       m_frozenAnimationClockMsec.reset();
     }
   }
+
+  void Server::emitRendererLostForTest() { wl_signal_emit_mutable(&m_renderer->events.lost, nullptr); }
 #endif
 
   bool Server::settled() const {

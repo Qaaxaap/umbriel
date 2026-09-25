@@ -639,6 +639,14 @@ namespace umbriel {
     return nlohmann::json{{"ok", nullptr}};
   }
 
+#ifdef UMBRIEL_TEST_IPC
+  nlohmann::json IpcCommands::rendererRecover(Server& server, std::string_view /*arg*/) {
+    server.emitRendererLostForTest();
+    server.emitRendererLostForTest();
+    return nlohmann::json{{"ok", nullptr}};
+  }
+#endif
+
   static constexpr IpcCommandSpec kIpcCommands[] = {
       {"msg", "<action> [args...]", "send an action to the compositor", true, &IpcCommands::msg, nullptr},
       {"windows", "", "list windows (app id and title)", false, &IpcCommands::windows, &printWindows},
@@ -660,6 +668,8 @@ namespace umbriel {
        &IpcCommands::clockAdvance, nullptr, 35},
       {"clock-resume", "", "let animation time follow the monotonic clock again, from where it stopped", false,
        &IpcCommands::clockResume, nullptr},
+      {"renderer-recover", "", "emit renderer loss and exercise recovery", false, &IpcCommands::rendererRecover,
+       nullptr},
 #endif
   };
 
