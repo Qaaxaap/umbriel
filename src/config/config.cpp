@@ -377,6 +377,65 @@ namespace umbriel {
       return std::nullopt;
     }
 
+    constexpr std::string_view kFullscreenExitScopeValues = R"("tiled", "floating", "pinned", or "all")";
+
+    std::optional<FullscreenExitScope> parseFullscreenExitScope(std::string_view token) {
+      if (token == "tiled") {
+        return FullscreenExitScope::Tiled;
+      }
+      if (token == "floating") {
+        return FullscreenExitScope::Floating;
+      }
+      if (token == "pinned") {
+        return FullscreenExitScope::Pinned;
+      }
+      if (token == "all") {
+        return FullscreenExitScope::All;
+      }
+      return std::nullopt;
+    }
+
+    // A string names one scope; an array combines several, and an empty array disables the behavior.
+    std::optional<FullscreenExitScope> readFullscreenExitScope(Section& section, std::string_view context) {
+      const toml::node* node = section.take("new_exits_fullscreen");
+      if (node == nullptr) {
+        return std::nullopt;
+      }
+      if (const auto* value = node->as_string()) {
+        const std::optional<FullscreenExitScope> scope = parseFullscreenExitScope(value->get());
+        if (!scope) {
+          warnAt(
+              node->source(), R"(ignoring {}.new_exits_fullscreen "{}" (expected {}))", context, value->get(),
+              kFullscreenExitScopeValues
+          );
+        }
+        return scope;
+      }
+      const auto* array = node->as_array();
+      if (array == nullptr) {
+        warnAt(
+            node->source(), "ignoring {}.new_exits_fullscreen (expected a string or an array of strings, each {})",
+            context, kFullscreenExitScopeValues
+        );
+        return std::nullopt;
+      }
+      auto combined = static_cast<uint8_t>(FullscreenExitScope::None);
+      for (const toml::node& entry : *array) {
+        const auto* value = entry.as_string();
+        const std::optional<FullscreenExitScope> scope =
+            value != nullptr ? parseFullscreenExitScope(value->get()) : std::nullopt;
+        if (!scope) {
+          warnAt(
+              entry.source(), "ignoring {}.new_exits_fullscreen entry (expected {})", context,
+              kFullscreenExitScopeValues
+          );
+          continue;
+        }
+        combined |= static_cast<uint8_t>(*scope);
+      }
+      return static_cast<FullscreenExitScope>(combined);
+    }
+
     std::optional<CenterFocusedColumn> readCenterFocused(Section& section, std::string_view context) {
       const toml::node* node = section.take("center_focused");
       if (node == nullptr) {
@@ -646,6 +705,9 @@ namespace umbriel {
             if (auto presets = readExtentPresets(s, layoutContext)) {
               overrides.extentPresets = std::move(*presets);
             }
+            if (const auto scope = readFullscreenExitScope(s, layoutContext)) {
+              overrides.newExitsFullscreen = scope;
+            }
             s.sub("scrolling", [&](Section& sc) {
               sc.real("default_extent_fraction", 0.1, 1.0, overrides.scrolling.defaultExtentFraction)
                   .boolean("center_underfull_strip", overrides.scrolling.centerUnderfullStrip);
@@ -653,18 +715,14 @@ namespace umbriel {
                 overrides.scrolling.centerFocused = centerFocused;
               }
             });
-            s.sub("dwindle", [&](Section& sd) {
-              sd.boolean("preserve_split", overrides.dwindle.preserveSplit)
-                  .boolean("new_exits_fullscreen", overrides.dwindle.newExitsFullscreen);
-            });
+            s.sub("dwindle", [&](Section& sd) { sd.boolean("preserve_split", overrides.dwindle.preserveSplit); });
             s.sub("master", [&](Section& sm) {
               if (const auto position = readMasterPosition(sm, layoutContext + ".master")) {
                 overrides.master.position = position;
               }
               sm.real("default_width_fraction", 0.1, 0.9, overrides.master.defaultWidthFraction)
                   .boolean("new_on_top", overrides.master.newOnTop)
-                  .boolean("new_becomes_master", overrides.master.newBecomesMaster)
-                  .boolean("new_exits_fullscreen", overrides.master.newExitsFullscreen);
+                  .boolean("new_becomes_master", overrides.master.newBecomesMaster);
             });
           },
           layoutContext
@@ -1366,6 +1424,9 @@ namespace umbriel {
         if (auto presets = readExtentPresets(s, "layout")) {
           loaded.layout.extentPresets = std::move(*presets);
         }
+        if (const auto scope = readFullscreenExitScope(s, "layout")) {
+          loaded.layout.newExitsFullscreen = *scope;
+        }
         s.sub("scrolling", [&](Section& sc) {
           sc.real("default_extent_fraction", 0.1, 1.0, loaded.layout.scrolling.defaultExtentFraction)
               .boolean("center_underfull_strip", loaded.layout.scrolling.centerUnderfullStrip);
@@ -1373,18 +1434,14 @@ namespace umbriel {
             loaded.layout.scrolling.centerFocused = *centerFocused;
           }
         });
-        s.sub("dwindle", [&](Section& sd) {
-          sd.boolean("preserve_split", loaded.layout.dwindle.preserveSplit)
-              .boolean("new_exits_fullscreen", loaded.layout.dwindle.newExitsFullscreen);
-        });
+        s.sub("dwindle", [&](Section& sd) { sd.boolean("preserve_split", loaded.layout.dwindle.preserveSplit); });
         s.sub("master", [&](Section& sm) {
           if (const auto position = readMasterPosition(sm, "layout.master")) {
             loaded.layout.master.position = *position;
           }
           sm.real("default_width_fraction", 0.1, 0.9, loaded.layout.master.defaultWidthFraction)
               .boolean("new_on_top", loaded.layout.master.newOnTop)
-              .boolean("new_becomes_master", loaded.layout.master.newBecomesMaster)
-              .boolean("new_exits_fullscreen", loaded.layout.master.newExitsFullscreen);
+              .boolean("new_becomes_master", loaded.layout.master.newBecomesMaster);
         });
       });
     }

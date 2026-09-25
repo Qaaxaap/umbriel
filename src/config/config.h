@@ -36,6 +36,16 @@ namespace umbriel {
     Shift,
   };
 
+  // Which kinds of joining window are allowed to push a fullscreen window out of
+  // fullscreen (new_exits_fullscreen). A bitmask so any combination is expressible.
+  enum class FullscreenExitScope : uint8_t {
+    None = 0,
+    Tiled = 1 << 0,
+    Floating = 1 << 1,
+    Pinned = 1 << 2,
+    All = Tiled | Floating | Pinned,
+  };
+
   struct AccelProfile {
     enum class Kind {
       Flat,
@@ -53,6 +63,7 @@ namespace umbriel {
     std::optional<int> gap;
     LayoutStrutOverrides struts;
     std::optional<std::vector<double>> extentPresets;
+    std::optional<FullscreenExitScope> newExitsFullscreen;
     struct Scrolling {
       std::optional<double> defaultExtentFraction;
       std::optional<bool> centerUnderfullStrip;
@@ -61,14 +72,12 @@ namespace umbriel {
     } scrolling;
     struct Dwindle {
       std::optional<bool> preserveSplit;
-      std::optional<bool> newExitsFullscreen;
       bool operator==(const Dwindle&) const = default;
     } dwindle;
     struct Master {
       std::optional<double> defaultWidthFraction;
       std::optional<bool> newOnTop;
       std::optional<bool> newBecomesMaster;
-      std::optional<bool> newExitsFullscreen;
       std::optional<MasterPosition> position;
       bool operator==(const Master&) const = default;
     } master;
@@ -99,6 +108,7 @@ namespace umbriel {
     int gap = 8;
     LayoutStruts struts;
     std::vector<double> extentPresets{1.0 / 3, 0.5, 2.0 / 3};
+    FullscreenExitScope newExitsFullscreen = FullscreenExitScope::None;
     struct Scrolling {
       std::optional<double> defaultExtentFraction;
       bool centerUnderfullStrip = true;
@@ -109,14 +119,12 @@ namespace umbriel {
     } scrolling;
     struct Dwindle {
       bool preserveSplit = false;
-      bool newExitsFullscreen = false;
       bool operator==(const Dwindle&) const = default;
     } dwindle;
     struct Master {
       double defaultWidthFraction = 0.55;
       bool newOnTop = true;
       bool newBecomesMaster = false;
-      bool newExitsFullscreen = false;
       MasterPosition position = MasterPosition::Left;
       bool operator==(const Master&) const = default;
     } master;
@@ -693,6 +701,7 @@ namespace umbriel {
       int gap = 8;
       LayoutStruts struts;
       std::vector<double> extentPresets{1.0 / 3, 0.5, 2.0 / 3};
+      FullscreenExitScope newExitsFullscreen = FullscreenExitScope::None;
       struct Scrolling {
         std::optional<double> defaultExtentFraction;
         bool centerUnderfullStrip = true;
@@ -701,14 +710,12 @@ namespace umbriel {
       } scrolling;
       struct Dwindle {
         bool preserveSplit = false;
-        bool newExitsFullscreen = false;
         bool operator==(const Dwindle&) const = default;
       } dwindle;
       struct Master {
         double defaultWidthFraction = 0.55;
         bool newOnTop = true;
         bool newBecomesMaster = false;
-        bool newExitsFullscreen = false;
         MasterPosition position = MasterPosition::Left;
         bool operator==(const Master&) const = default;
       } master;

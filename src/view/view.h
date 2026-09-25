@@ -139,8 +139,10 @@ namespace umbriel {
     // they were hidden, so the reveal does not replay the transition.
     void settleFocusChrome();
     void setWorkspace(Workspace* workspace, bool attachToLayout = true);
+    void setWorkspace(Workspace* workspace, bool attachToLayout, LayoutAttachOrigin origin);
     // A move the user asked for: the view belongs where it lands, and any displaced home is dropped.
     void moveToWorkspace(Workspace* workspace, bool attachToLayout = true);
+    void moveToWorkspace(Workspace* workspace, bool attachToLayout, LayoutAttachOrigin origin);
     void detachWorkspace();
 
     // The output, workspace, and layout member to restore after output loss.
