@@ -55,6 +55,15 @@ wait_for_field float-resize h 480
 wait_for_field float-resize w 320
 wait_for_field float-resize h 480
 
+# A float grown to the whole usable axis has no room left to keep its offset, so
+# it moves to the usable edge instead of hanging off screen.
+"$UMBRIEL" msg window-set-primary-extent:1 > /dev/null
+wait_for_field float-resize w 1280
+wait_for_field float-resize x 0
+"$UMBRIEL" msg window-set-secondary-extent:1 > /dev/null
+wait_for_field float-resize h 720
+wait_for_field float-resize y 0
+
 # A resized float must leave maximized state behind, not carry it silently. The
 # transition proves it: toggling after the resize has to maximize. If the resize
 # left the flag set, this toggle restores the pre-maximize box instead.

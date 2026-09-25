@@ -208,8 +208,8 @@ namespace umbriel {
     void setDragPosition(int x, int y);
     // Keep at least clamp(size / 4, 10, 75) pixels per axis on-screen.
     void clampFloatingPosition();
-    // The same clamp for a size that has been requested but not committed yet. The origin animates, so it settles
-    // together with the presented size.
+    // clampFloatingPosition for a requested but uncommitted size, snapping an axis the size fills to the usable edge.
+    // Animates, settling with the presented size.
     void clampFloatingPositionForSize(int width, int height);
     // Send a floating size configure; the pending request is the resize-action basis until committed.
     void requestFloatingSize(int width, int height);
@@ -499,9 +499,10 @@ namespace umbriel {
     void finishFloatingResize();
     void syncFloatingResizePosition();
     void adoptFloatingClientSize();
-    // Where `origin` has to move so a float of `width` by `height` keeps its on-screen margin, or nullopt when the
-    // clamp does not apply or the origin already satisfies it.
-    [[nodiscard]] std::optional<FloatingPoint> floatingClampTarget(FloatingPoint origin, int width, int height);
+    // Where `origin` has to move to satisfy the clamp, or nullopt if it already does. `resize` selects
+    // clampFloatingOriginForResize over clampFloatingOrigin.
+    [[nodiscard]] std::optional<FloatingPoint>
+    floatingClampTarget(FloatingPoint origin, int width, int height, bool resize);
     std::optional<FloatingPoint> getFloatingPosition(
         const wlr_box usable, const std::optional<WindowPosition>& position = std::nullopt,
         const std::optional<std::array<int, 2>> size = std::nullopt

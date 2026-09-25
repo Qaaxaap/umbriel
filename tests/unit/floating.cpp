@@ -6,6 +6,7 @@ using umbriel::anchoredContentOrigin;
 using umbriel::centeredOrigin;
 using umbriel::centeredOverShown;
 using umbriel::clampFloatingOrigin;
+using umbriel::clampFloatingOriginForResize;
 using umbriel::floatingFractionSize;
 using umbriel::FloatingGeometry;
 using umbriel::floatingKeepVisible;
@@ -187,6 +188,16 @@ UMBRIEL_TEST(clampDoesNotInvertWhenTheBoundsCross) {
   // Low bound wins rather than the range being read backwards.
   CHECK_EQ(clamped.x, usable.x + floatingKeepVisible(0));
   CHECK_EQ(clamped.y, usable.y + floatingKeepVisible(0));
+}
+
+UMBRIEL_TEST(resizeClampSnapsOnlyTheAxisTheWindowFills) {
+  // Width fills the usable axis and snaps to its edge; height has slack and
+  // keeps the ordinary on-screen clamp, off-screen hang included.
+  const wlr_box usable{0, 26, 1280, 694};
+  const wlr_box geo{0, 0, 1280, 300};
+  const FloatingPoint clamped = clampFloatingOriginForResize({500, -5000}, geo, usable);
+  CHECK_EQ(clamped.x, 0);
+  CHECK_EQ(clamped.y, clampFloatingOrigin({500, -5000}, geo, usable).y);
 }
 
 // Dialog placement
