@@ -200,6 +200,7 @@ if build_tests
   )
   foreach case_name : [
     'implicit-srgb-target',
+    'scene-unset-primaries',
     'gamma22-to-srgb',
     'pq-roundtrip',
     'bt2020-to-srgb',
