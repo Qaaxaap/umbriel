@@ -4078,6 +4078,9 @@ namespace umbriel {
         m_server->focusView(this);
       }
       updateForeignState();
+      if (Overview* overview = m_server->overview(); overview != nullptr && overview->active()) {
+        overview->onViewFloatingChanged(this);
+      }
       refreshStateRuleEffects();
       return;
     }
@@ -4141,9 +4144,11 @@ namespace umbriel {
       }
     }
     updateForeignState();
-    if (unpinning) {
-      if (Overview* overview = m_server->overview(); overview != nullptr && overview->active()) {
+    if (Overview* overview = m_server->overview(); overview != nullptr && overview->active()) {
+      if (unpinning) {
         overview->onViewPinnedChanged(this);
+      } else {
+        overview->onViewFloatingChanged(this);
       }
     }
     refreshStateRuleEffects();

@@ -1942,6 +1942,16 @@ namespace umbriel {
     assignShortcuts();
   }
 
+  void Overview::onViewFloatingChanged(View* view) {
+    if (!m_active || view == nullptr || !view->mapped() || view->pinned()) {
+      return;
+    }
+    // Cards stack tiled, then floating (populateCards): rebuild so this one
+    // moves to its new layer instead of keeping its old spot.
+    rebuildCard(view);
+    assignShortcuts();
+  }
+
   void Overview::onViewUnmapped(View* view) {
     if (!m_active || view == nullptr) {
       return;
