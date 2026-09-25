@@ -71,8 +71,8 @@ workspace rules.
 
 ### Cyclic workspaces
 
-With `cyclic_workspaces = true`, a workspace step that would leave the
-inventory wraps to the other end instead of stopping there:
+With `cyclic_workspaces = true`, a workspace step past either end of the
+inventory wraps to the other end:
 
 ```toml
 [output.DP-1]
@@ -80,19 +80,14 @@ workspaces = 3
 cyclic_workspaces = true
 ```
 
-It applies to `workspace-next` and `workspace-previous`, and to
-`window-move-to-workspace-next`/`previous` and
-`column-move-to-workspace-next`/`previous`, so the three stay consistent.
+This applies to `workspace-next`/`previous`,
+`window-move-to-workspace-next`/`previous`,
+`window-move-to-workspace-silent-next`/`previous`, and
+`column-move-to-workspace-next`/`previous`.
 
-A step wraps only where it would leave the inventory, and a dynamic output
-always keeps a trailing empty workspace (see
-[Dynamic workspaces](workspaces.md#dynamic-workspaces)). Stepping forward from
-the last populated workspace therefore enters that empty workspace instead of
-wrapping: it is a step inside the inventory, not past its end. To reach the
-first workspace, step forward once more from there. Stepping back from the first
-workspace wraps to the last, which on a dynamic output is that same empty
-workspace. A static inventory has no spare slot, so both ends wrap directly.
-See [Choose a workspace model](workspaces.md#choose-a-workspace-model).
+On a dynamic output, the trailing empty workspace is the last one. Stepping
+forward from the last populated workspace enters it, and one more step wraps to
+the first. A static inventory wraps directly at both ends.
 
 ### Initial scrolling width
 

@@ -74,22 +74,18 @@ restriction.
 ## Cyclic switching
 
 `cyclic_workspaces` wraps a workspace step around the ends of the inventory. It
-is read from the owning output's rule when the action runs, so changing it needs
-no runtime effect beyond the reload that re-parses it, and nothing else holds
-state derived from it. The three adjacent actions share the resolution, so a
-workspace switch and a window move cannot disagree at the ends.
+is read from the owning output's rule when the action runs, so a reload applies
+it and nothing else holds state derived from it. The adjacent switch and move
+actions resolve their target through `stepWorkspace()` in
+`src/server/actions.cpp`, so they cannot disagree at the ends.
 
-The wrap applies only where a step actually leaves the inventory. A dynamic
-output keeps a trailing empty anonymous workspace, so stepping forward from the
-last populated workspace enters that sentinel rather than wrapping — the step is
-inside the inventory, and the sentinel is the slot `next` would otherwise have
-been given. The forward wrap is therefore reachable from the sentinel itself, and
-at the runtime limit when no sentinel can be appended. Stepping back from the
-first workspace wraps to the last, which on a dynamic output is that same
-sentinel. A static inventory has no sentinel, so both ends wrap directly.
-
-Without the key, a step past either end is a silent no-op. That is the behavior
-every release before this key had.
+The wrap applies only where a step leaves the inventory. On a dynamic output,
+the trailing empty sentinel is the last member: stepping forward from the last
+populated workspace enters it, and the forward wrap happens from the sentinel
+itself, or at the workspace limit where no sentinel can be appended. Stepping
+back from the first workspace wraps to that sentinel. A static inventory has no
+sentinel, so both ends wrap directly. Without the key, a step past either end is
+a silent no-op.
 
 ## Pointer focus after scene changes
 
