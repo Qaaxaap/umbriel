@@ -7,6 +7,7 @@
 #include "core/tracy.h"
 #include "input/cursor.h"
 #include "input/seat.h"
+#include "layer/layer_surface.h"
 #include "layout/scrolling.h"
 #include "output/output.h"
 #include "overview/overview.h"
@@ -3496,6 +3497,13 @@ namespace umbriel {
     if (Output* output = currentOutput()) {
       output->updateHdr();
     }
+    // The commit that leaves fullscreen uncovers top-layer surfaces, so an exclusive one takes the seat back.
+    if (m_committedFullscreen && !m_toplevel->current.fullscreen && m_mapped) {
+      if (LayerSurface* layer = m_server->exclusiveKeyboardLayer()) {
+        layer->focus();
+      }
+    }
+    m_committedFullscreen = m_toplevel->current.fullscreen;
     if (m_mapped
         && m_acceptClientMaximizeSerial
         && static_cast<int32_t>(m_toplevel->base->current.configure_serial - *m_acceptClientMaximizeSerial) >= 0) {
@@ -4278,6 +4286,12 @@ namespace umbriel {
     if (unpinning) {
       if (Overview* overview = m_server->overview(); overview != nullptr && overview->active()) {
         overview->onViewPinnedChanged(this);
+      }
+    }
+    if (fullscreen && m_mapped && m_onActiveWorkspace) {
+      LayerSurface* layer = LayerSurface::fromSurface(m_server->seat()->wlr()->keyboard_state.focused_surface);
+      if (layer != nullptr && layer->output() == currentOutput() && !layer->acceptsKeyboard()) {
+        m_server->focusView(this);
       }
     }
     if (refreshHoverFocus) {
