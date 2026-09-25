@@ -161,17 +161,18 @@ format:
     find src tests \( -name '*.cpp' -o -name '*.h' \) -print0 | xargs -0 clang-format -i
     find src tests \( -name '*.cpp' -o -name '*.h' \) -print0 | xargs -0 grep -ZlP '\s+$' | xargs -0 -r sed -i 's/[[:space:]]*$//'
 
-# Tests are checked too: they are code the same rules apply to, and a finding
-# there is as real as one in src.
-_clang_tidy m=mode *args:
+# clang-tidy over src and tests, or only the given files: `just lint`, `just lint src/core/animation.cpp`. Headers are
+# checked through the sources that include them. Another build directory is `mode=`, as in `just mode=asan lint`.
+# The compile database carries -Werror for the compiler; -Wno-error keeps clang-only warnings out of clang-tidy's errors.
+[no-exit-message]
+lint *files: (_ensure-configured mode)
     #!/usr/bin/env bash
     set -euo pipefail
-    src_root="$(realpath src)"
-    tests_root="$(realpath tests)"
-    run-clang-tidy -quiet -use-color -p "build-{{m}}" -j "$(nproc)" -header-filter='\.\./(src|tests)/.*' {{args}} "^(${src_root}|${tests_root})/.*"
-
-lint m=mode: (_ensure-configured m)
-    just _clang_tidy {{m}} '-warnings-as-errors=*'
+    opts=(-quiet -p "build-{{mode}}" -header-filter='\.\./(src|tests)/.*' -warnings-as-errors='*' -extra-arg=-Wno-error)
+    if (($# > 0)); then
+        exec clang-tidy --use-color "${opts[@]}" "$@"
+    fi
+    run-clang-tidy -use-color -j "$(nproc)" "${opts[@]}" "^($(realpath src)|$(realpath tests))/.*"
 
 clean m=mode:
     #!/usr/bin/env bash

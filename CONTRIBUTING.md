@@ -52,7 +52,7 @@ The README covers routine builds and running Umbriel. Contributor checks and spe
 | `just check [filter ...]` | Run the headless compositor harness (`tests/harness/check.sh`), every check or the ones whose names contain a fragment: `just check 721`, `just check drag`, `just check 721 -v`. Checks run several at a time; `-j16` or `CHECK_JOBS=16` changes how many. Another build directory is `mode=`, as in `just mode=asan check 721` |
 | `just check-stress <name> [n]` | Run `n` copies (default 32) of one harness check at once, to expose races that load reveals |
 | `just check-names` | List every harness check name. Builds nothing |
-| `just lint` | Run clang-tidy |
+| `just lint [file ...]` | Run clang-tidy on everything, or only the given files |
 | `just format` | Format source and test files |
 | `just install` | Build a release binary and install it with `meson install` |
 | `just clean <mode>` | Remove a build directory |
