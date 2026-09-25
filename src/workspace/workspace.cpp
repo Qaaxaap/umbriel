@@ -542,12 +542,9 @@ namespace umbriel {
   }
 
   void Workspace::clampScrollToRange() {
-    ScrollingLayout* scrolling = scrollingLayout();
-    if (scrolling == nullptr) {
-      return;
+    if (ScrollingLayout* scrolling = scrollingLayout()) {
+      scrolling->clampScroll(scrollViewportExtent());
     }
-    const auto maxScroll = static_cast<double>(scrolling->maxScroll(scrollViewportExtent()));
-    scrolling->setScroll(std::clamp(scrolling->scroll(), 0.0, maxScroll));
   }
 
   void Workspace::markArrange(bool animate) {
