@@ -96,6 +96,30 @@ and must stay so (`output.cpp:1140`). Mailbox and FIFO clients block on
 `wl_surface.frame`, so skipping it on the nothing-to-render path stalls them
 permanently.
 
+## Renderer loss recovery
+
+UmbrielFX checks `glGetGraphicsResetStatusKHR` when a buffer render pass begins.
+A reset emits the renderer's `lost` signal, but the listener only queues a
+one-shot event-loop idle callback. Recovery cannot destroy the renderer from
+the listener itself: `wl_signal_emit_mutable` still owns temporary listeners in
+that signal, and the failed render call still has the renderer on its stack.
+Loss notifications observed before the idle callback runs are coalesced into
+that one recovery.
+
+Once the lost-signal callback and active render call have unwound, the idle
+callback creates a renderer and allocator, moves the lost listener, rebinds the
+compositor and every output, schedules fresh frames, then destroys the old
+objects. Shutdown cancels a pending recovery, and a failure to queue or
+construct the replacement terminates the compositor without attempting
+synchronous teardown.
+
+[`600_renderer_recovery.sh`](../../tests/harness/checks/600_renderer_recovery.sh)
+emits two lost notifications in one dispatch and requires exactly one completed
+replacement followed by a drawn frame. The headless check covers signal
+lifetime, coalescing, and renderer rebinding. It does not exercise a hardware
+or driver reset, so reset detection and recovery on a physical GPU still
+require a running-session check.
+
 ## Zones
 
 A `tracy` build carries CPU zones at those boundaries through

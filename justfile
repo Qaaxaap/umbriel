@@ -22,7 +22,7 @@ configure m=mode install_prefix=prefix:
         args+=(--buildtype=release -Db_lto=true)
         ;;
       asan)
-        args+=(--buildtype=debug -Db_sanitize=address)
+        args+=(--buildtype=debug -Db_sanitize=address -Dwerror=true)
         ;;
       tracy)
         # Packaged Tracy clients are the no-op stub; build one under ~/.local.
@@ -30,7 +30,7 @@ configure m=mode install_prefix=prefix:
         args+=(-Dpkg_config_path="$HOME/.local/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}")
         ;;
       debug)
-        args+=(--buildtype=debug)
+        args+=(--buildtype=debug -Dwerror=true)
         ;;
       *)
         # Recipes that build take the mode as their first argument, so a stray
@@ -131,6 +131,28 @@ check *filters: (_ensure-configured mode)
     fi
     bash tests/harness/check.sh ./build-{{mode}}/umbriel {{filters}}
 
+# Runs n copies of one harness check at once, each against its own instance, to expose races that load reveals. `just check-stress 225`, `just check-stress 225 64`.
+[no-exit-message]
+check-stress name n="32": (_ensure-configured mode)
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! build_log=$(meson compile -C build-{{mode}} umbriel harness-clients 2>&1); then
+        printf '%s\n' "$build_log" >&2
+        exit 1
+    fi
+    mapfile -t matches < <(bash tests/harness/check.sh ./build-{{mode}}/umbriel --list {{name}})
+    if ((${#matches[@]} != 1)); then
+        echo "check-stress: '{{name}}' must match exactly one check, matched ${#matches[@]}: ${matches[*]}" >&2
+        exit 2
+    fi
+    # Beside checks/, so copies resolve repository files the way the original does.
+    scratch=$(mktemp -d tests/harness/.stress.XXXXXXXX)
+    trap 'rm -rf "$scratch"' EXIT
+    for ((i = 1; i <= {{n}}; i++)); do
+        cp "tests/harness/checks/${matches[0]}.sh" "$scratch/${matches[0]}.$(printf '%03d' "$i").sh"
+    done
+    CHECK_DIR="$scratch" CHECK_DURATIONS_FILE="$scratch/durations" bash tests/harness/check.sh ./build-{{mode}}/umbriel -j {{n}}
+
 # Names of every harness check. Boots and builds nothing.
 check-names:
     @bash tests/harness/check.sh ./build-{{mode}}/umbriel --list
@@ -139,32 +161,18 @@ format:
     find src tests \( -name '*.cpp' -o -name '*.h' \) -print0 | xargs -0 clang-format -i
     find src tests \( -name '*.cpp' -o -name '*.h' \) -print0 | xargs -0 grep -ZlP '\s+$' | xargs -0 -r sed -i 's/[[:space:]]*$//'
 
-# Tests are checked too: they are code the same rules apply to, and a finding
-# there is as real as one in src.
-_clang_tidy m=mode *args:
+# clang-tidy over src and tests, or only the given files: `just lint`, `just lint src/core/animation.cpp`. Headers are
+# checked through the sources that include them. Another build directory is `mode=`, as in `just mode=asan lint`.
+# The compile database carries -Werror for the compiler; -Wno-error keeps clang-only warnings out of clang-tidy's errors.
+[no-exit-message]
+lint *files: (_ensure-configured mode)
     #!/usr/bin/env bash
     set -euo pipefail
-    src_root="$(realpath src)"
-    tests_root="$(realpath tests)"
-    run-clang-tidy -quiet -use-color -p "build-{{m}}" -j "$(nproc)" -header-filter='\.\./(src|tests)/.*' {{args}} "^(${src_root}|${tests_root})/.*"
-
-# Fail on any compiler warning emitted while building. clang-tidy does not surface these: it reports its own check names, not the compiler's diagnostics. Compiles everything rather than only what changed. A warning is emitted when a file is compiled, so an incremental build reports nothing for the files it skipped, which silently turns a gate into a coin flip. A dead function left behind by an edit in another file is exactly the case that slips through.
-_warnings m=mode: (_ensure-configured m)
-    #!/usr/bin/env bash
-    set -euo pipefail
-    ninja -C build-{{m}} -t clean >/dev/null
-    if ! output=$(ninja -C build-{{m}} 2>&1); then
-        printf '%s\n' "$output"
-        exit 1
+    opts=(-quiet -p "build-{{mode}}" -header-filter='\.\./(src|tests)/.*' -warnings-as-errors='*' -extra-arg=-Wno-error)
+    if (($# > 0)); then
+        exec clang-tidy --use-color "${opts[@]}" "$@"
     fi
-    if printf '%s\n' "$output" | grep -q 'warning:'; then
-        printf '%s\n' "$output" | grep -A8 'warning:'
-        echo "error: compiler warnings are not allowed" >&2
-        exit 1
-    fi
-
-lint m=mode: (_ensure-configured m) (_warnings m)
-    just _clang_tidy {{m}} '-warnings-as-errors=*'
+    run-clang-tidy -use-color -j "$(nproc)" "${opts[@]}" "^($(realpath src)|$(realpath tests))/.*"
 
 clean m=mode:
     #!/usr/bin/env bash

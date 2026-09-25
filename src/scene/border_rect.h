@@ -12,6 +12,10 @@ namespace umbriel {
     wlr_scene_border* node = nullptr;
     std::array<float, 4> innerColor{};
     std::array<float, 4> outerColor{};
+    // Unscaled ring the snapshot was taken with, so a closing shrink collapses what was drawn.
+    int innerWidth = 0;
+    int outerWidth = 0;
+    int cornerRadius = 0;
   };
 
   // Position and size the single-pass border relative to the content origin.

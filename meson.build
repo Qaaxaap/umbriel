@@ -68,6 +68,13 @@ build_tests = tests_opt.enabled() or (
   and get_option('b_sanitize') == 'none'
 )
 
+# Harness-only IPC commands are compiled out of anything but a debug build unless requested, so a release cannot
+# expose them.
+test_ipc_opt = get_option('test_ipc')
+if test_ipc_opt.enabled() or (test_ipc_opt.auto() and get_option('buildtype') == 'debug')
+  add_project_arguments('-DUMBRIEL_TEST_IPC', language: 'cpp')
+endif
+
 if cpp.get_define('WLR_HAS_SESSION', prefix: '#include <wlr/config.h>', dependencies: wlroots_dep) != '1'
   error('Umbriel requires wlroots built with session support')
 endif
@@ -502,6 +509,7 @@ pure_sources = files(
   'src/input/surface_layouts.cpp',
   'src/input/shortcut_keysym.cpp',
   'src/layout/layout.cpp',
+  'src/layout/layout_motion.cpp',
   'src/layout/scrolling.cpp',
   'src/layout/dwindle.cpp',
   'src/layout/master.cpp',
@@ -542,6 +550,7 @@ umbriel_pure_dep = declare_dependency(
 # and the executable is just an entry point.
 core_sources = files(
   'src/core/animation.cpp',
+  'src/core/application_scope.cpp',
   'src/scene/animation_shader.cpp',
   'src/core/fdlimit.cpp',
   'src/core/log.cpp',
@@ -567,6 +576,7 @@ core_sources = files(
   'src/view/view.cpp',
   'src/view/decoration.cpp',
   'src/view/presentation.cpp',
+  'src/view/resize_crossfade.cpp',
   'src/view/registry.cpp',
   'src/server/focus.cpp',
   'src/xwayland/supervisor.cpp',

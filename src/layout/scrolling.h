@@ -50,6 +50,9 @@ namespace umbriel {
     // Raw scroll mutation. `centeredRest` is true only when restoring a saved column-center resting position.
     void setScroll(double scroll, bool centeredRest = false);
     bool centerColumn(int columnIndex, int viewportPrimary);
+    // Clamps the offset into [0, maxScroll]. A centered rest may lie outside that range, but only as far as centering
+    // the first or last column does.
+    void clampScroll(int viewportPrimary);
     void reconcileFocusedColumn(int columnIndex, int viewportPrimary);
     [[nodiscard]] bool centeredRest() const { return m_centeredRest; }
     // How much to subtract from the scroll offset when `columnIndex` is about
@@ -101,6 +104,7 @@ namespace umbriel {
     [[nodiscard]] int totalWidth(int viewportPrimary) const;
     [[nodiscard]] int rawTotalWidth(int viewportPrimary) const;
     [[nodiscard]] int centeringOffset(int viewportPrimary) const;
+    [[nodiscard]] double centeredScroll(int columnIndex, int viewportPrimary) const;
     [[nodiscard]] double
     targetScrollForEnsureVisible(int columnIndex, int viewportPrimary, bool center, bool force = false) const;
     [[nodiscard]] bool alwaysCentersFocus() const;

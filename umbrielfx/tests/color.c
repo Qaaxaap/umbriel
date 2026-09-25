@@ -25,6 +25,7 @@
 #include "umbrielfx/render/fx_renderer/fx_offscreen_buffers.h"
 #include "umbrielfx/render/pass.h"
 #include "umbrielfx/types/fx/blur_data.h"
+#include "umbrielfx/types/wlr_scene.h"
 
 #define TEST_WIDTH 16
 #define TEST_HEIGHT 16
@@ -180,6 +181,81 @@ static bool submit_solid_frame(struct wlr_render_pass *pass,
 		.blend_mode = WLR_RENDER_BLEND_MODE_NONE,
 	});
 	return wlr_render_pass_submit(pass);
+}
+
+static bool test_scene_unset_primaries(struct fixture *fixture) {
+	bool ok = true;
+	struct wlr_scene *scene = NULL;
+	struct wlr_buffer *source = NULL;
+
+	struct wlr_output_state enable_state;
+	wlr_output_state_init(&enable_state);
+	wlr_output_state_set_enabled(&enable_state, true);
+	wlr_output_state_set_custom_mode(&enable_state,
+		TEST_WIDTH, TEST_HEIGHT, 0);
+	bool enabled = wlr_output_commit_state(fixture->output, &enable_state);
+	wlr_output_state_finish(&enable_state);
+	if (!check(enabled, "enable scene output")) {
+		return false;
+	}
+
+	source = create_output_buffer(fixture, DRM_FORMAT_ABGR8888,
+		TEST_WIDTH, TEST_HEIGHT);
+	if (!check(source != NULL, "allocate scene source buffer")) {
+		return false;
+	}
+
+	struct wlr_render_pass *source_pass = wlr_renderer_begin_buffer_pass(
+		fixture->renderer, source, NULL);
+	if (!check(source_pass != NULL, "begin scene source pass") ||
+			!check(submit_solid_frame(source_pass,
+				TEST_WIDTH, TEST_HEIGHT, 0.25f),
+				"submit scene source pass")) {
+		ok = false;
+		goto out;
+	}
+
+	scene = wlr_scene_create();
+	if (!check(scene != NULL, "create scene")) {
+		ok = false;
+		goto out;
+	}
+	struct wlr_scene_output *scene_output =
+		wlr_scene_output_create(scene, fixture->output);
+	if (!check(scene_output != NULL, "create scene output")) {
+		ok = false;
+		goto out;
+	}
+	wlr_scene_output_set_direct_scanout_enabled(scene_output, false);
+
+	struct wlr_scene_buffer *scene_buffer =
+		wlr_scene_buffer_create(&scene->tree, source);
+	if (!check(scene_buffer != NULL, "create scene buffer")) {
+		ok = false;
+		goto out;
+	}
+	ok = check(scene_buffer->primaries == 0,
+		"new scene buffer leaves primaries unset") && ok;
+
+	struct wlr_output_state render_state;
+	wlr_output_state_init(&render_state);
+	bool built = wlr_scene_output_build_state(
+		scene_output, &render_state, NULL);
+	ok = check(built, "render scene buffer with unset primaries") && ok;
+	ok = check(built &&
+			(render_state.committed & WLR_OUTPUT_STATE_BUFFER) != 0 &&
+			render_state.buffer != NULL,
+		"scene render produced an output buffer") && ok;
+	wlr_output_state_finish(&render_state);
+
+out:
+	if (scene != NULL) {
+		wlr_scene_node_destroy(&scene->tree.node);
+	}
+	if (source != NULL) {
+		wlr_buffer_drop(source);
+	}
+	return ok;
 }
 
 static size_t output_lut_count(struct fixture *fixture) {
@@ -1212,6 +1288,73 @@ out:
 	return ok;
 }
 
+// Capture publishes the texture's preferred read format as its only SHM format.
+// Every 8-bit target must publish the BGRA byte order when the driver can read
+// it, and the published format must read back in its own byte order.
+static bool test_capture_read_format(struct fixture *fixture) {
+	const uint32_t targets[] = {
+		DRM_FORMAT_XRGB8888, DRM_FORMAT_ARGB8888,
+		DRM_FORMAT_XBGR8888, DRM_FORMAT_ABGR8888,
+	};
+	bool bgra = fx_get_renderer(fixture->renderer)->exts.EXT_read_format_bgra;
+	bool ok = true;
+	for (size_t i = 0; i < sizeof(targets) / sizeof(targets[0]); i++) {
+		char message[128];
+		struct wlr_buffer *target = create_output_buffer(fixture,
+			targets[i], TEST_WIDTH, TEST_HEIGHT);
+		if (target == NULL) {
+			snprintf(message, sizeof(message),
+				"allocate 0x%08X target", targets[i]);
+			ok = check(targets[i] != DRM_FORMAT_XRGB8888, message) && ok;
+			continue;
+		}
+
+		struct wlr_render_pass *pass = wlr_renderer_begin_buffer_pass(
+			fixture->renderer, target, NULL);
+		struct wlr_texture *texture = NULL;
+		if (pass == NULL || !submit_solid_frame(pass, TEST_WIDTH, TEST_HEIGHT, 1.0f) ||
+				(texture = wlr_texture_from_buffer(fixture->renderer, target)) == NULL) {
+			snprintf(message, sizeof(message),
+				"render and wrap 0x%08X target", targets[i]);
+			ok = check(false, message) && ok;
+			wlr_buffer_drop(target);
+			continue;
+		}
+
+		bool alpha = targets[i] == DRM_FORMAT_ARGB8888 ||
+			targets[i] == DRM_FORMAT_ABGR8888;
+		uint32_t expected = bgra
+			? (alpha ? DRM_FORMAT_ARGB8888 : DRM_FORMAT_XRGB8888)
+			: (alpha ? DRM_FORMAT_ABGR8888 : DRM_FORMAT_XBGR8888);
+		uint32_t published = wlr_texture_preferred_read_format(texture);
+		snprintf(message, sizeof(message),
+			"0x%08X target publishes 0x%08X, expected 0x%08X",
+			targets[i], published, expected);
+		ok = check(published == expected, message) && ok;
+
+		uint8_t pixels[TEST_WIDTH * TEST_HEIGHT * 4] = {0};
+		bool read = wlr_texture_read_pixels(texture,
+			&(struct wlr_texture_read_pixels_options) {
+				.data = pixels,
+				.format = published,
+				.stride = TEST_WIDTH * 4,
+			});
+		const uint8_t bgra_red[4] = { 128, 64, 255, 255 };
+		const uint8_t rgba_red[4] = { 255, 64, 128, 255 };
+		bool bgra_order = published == DRM_FORMAT_XRGB8888 ||
+			published == DRM_FORMAT_ARGB8888;
+		uint8_t actual[4] = { pixels[0], pixels[1], pixels[2], 255 };
+		snprintf(message, sizeof(message),
+			"0x%08X target reads back as 0x%08X in its byte order", targets[i], published);
+		ok = check(read && codes_close(actual, bgra_order ? bgra_red : rgba_red, 1),
+			message) && ok;
+
+		wlr_texture_destroy(texture);
+		wlr_buffer_drop(target);
+	}
+	return ok;
+}
+
 int main(int argc, char *argv[]) {
 	if (argc != 2) {
 		fprintf(stderr, "usage: %s CASE\n", argv[0]);
@@ -1228,6 +1371,8 @@ int main(int argc, char *argv[]) {
 	bool ok;
 	if (strcmp(argv[1], "implicit-srgb-target") == 0) {
 		ok = test_implicit_srgb_target(&fixture);
+	} else if (strcmp(argv[1], "scene-unset-primaries") == 0) {
+		ok = test_scene_unset_primaries(&fixture);
 	} else if (strcmp(argv[1], "gamma22-to-srgb") == 0) {
 		ok = test_gamma22_to_srgb(&fixture);
 	} else if (strcmp(argv[1], "pq-roundtrip") == 0) {
@@ -1254,6 +1399,8 @@ int main(int argc, char *argv[]) {
 		ok = test_shared_sdr_capture_lock(&fixture);
 	} else if (strcmp(argv[1], "shared-sdr-capture-storage-change") == 0) {
 		ok = test_shared_sdr_capture_storage_change(&fixture);
+	} else if (strcmp(argv[1], "capture-read-format") == 0) {
+		ok = test_capture_read_format(&fixture);
 	} else {
 		fprintf(stderr, "unknown case: %s\n", argv[1]);
 		ok = false;

@@ -8,11 +8,17 @@ trap 'rm -rf "$TEST_DIR"' EXIT
 
 readonly TEST_HOME="$TEST_DIR/home"
 readonly TEST_BIN="$TEST_DIR/bin"
+readonly PROFILE_BIN="$TEST_DIR/profile-bin"
 readonly PROFILE_TRACE="$TEST_DIR/profile-trace"
+readonly PROFILE_EXEC_TRACE="$TEST_DIR/profile-exec-trace"
 readonly IMPORT_TRACE="$TEST_DIR/import-trace"
 readonly SERVICE_ENV="$TEST_DIR/service-environment"
+readonly SERVICE_PATH="$TEST_DIR/service-path"
+readonly MANAGER_PATH='/environment.d/bin:/usr/bin'
+readonly EXPECTED_LOGIN_PATH="$PROFILE_BIN:$TEST_BIN:$PATH"
 readonly SERVICE_SESSION_ENV="$TEST_DIR/service-session-environment"
 readonly DBUS_ENV="$TEST_DIR/dbus-environment"
+readonly DBUS_IMPORT_TRACE="$TEST_DIR/dbus-import-trace"
 readonly DIRECT_ENV="$TEST_DIR/direct-environment"
 readonly DIRECT_ARGUMENTS="$TEST_DIR/direct-arguments"
 readonly DIRECT_SESSION_ENV="$TEST_DIR/direct-session-environment"
@@ -29,7 +35,7 @@ readonly INJECTION_MARKER="$TEST_DIR/injected"
 readonly DRS_INJECTION_MARKER="$TEST_DIR/drs-injected"
 readonly DANGEROUS_ARGUMENT="\$(touch '$INJECTION_MARKER')"
 
-mkdir -p "$TEST_HOME" "$TEST_BIN"
+mkdir -p "$TEST_HOME" "$TEST_BIN" "$PROFILE_BIN"
 sed 's|/etc/shells|"$HOME/shells"|g' "$SOURCE_LAUNCHER" > "$LAUNCHER"
 sed 's|/etc/shells|"$HOME/shells"|g' "$SOURCE_DIRECT_LAUNCHER" > "$DIRECT_LAUNCHER"
 chmod 700 "$LAUNCHER" "$DIRECT_LAUNCHER"
@@ -40,7 +46,7 @@ printf '%s\n' "$login_shell" > "$TEST_HOME/shells"
 cat > "$TEST_HOME/.bash_profile" <<'EOF'
 printf 'profile\n' >> "$UMBRIEL_TEST_PROFILE_TRACE"
 export UMBRIEL_LOGIN_PROFILE_MARKER='from login profile'
-export PATH="$UMBRIEL_TEST_BIN:$UMBRIEL_TEST_HOST_PATH"
+export PATH="$UMBRIEL_TEST_PROFILE_BIN:$UMBRIEL_TEST_BIN:$UMBRIEL_TEST_HOST_PATH"
 export DISPLAY=:from-login-profile
 export WAYLAND_DISPLAY=profile-wayland
 export WAYLAND_SOCKET=42
@@ -48,6 +54,11 @@ export UMBRIEL_SOCKET=profile-umbriel
 export XDG_CURRENT_DESKTOP=profile-current
 export XDG_SESSION_DESKTOP=profile-session
 export XDG_SESSION_TYPE=profile-type
+EOF
+
+cat > "$PROFILE_BIN/umbriel-session-profile-path-probe" <<'EOF'
+#!/bin/sh
+printf 'launched\n' > "$UMBRIEL_TEST_PROFILE_EXEC_TRACE"
 EOF
 
 cat > "$TEST_BIN/systemctl" <<'EOF'
@@ -61,6 +72,14 @@ if [ "${3:-}" = "is-active" ]; then
 fi
 if [ "${2:-}" = "import-environment" ]; then
   printf '%s\n' "$@" > "$UMBRIEL_TEST_IMPORT_TRACE"
+  service_path=$UMBRIEL_TEST_MANAGER_PATH
+  for name in "$@"; do
+    if [ "$name" = PATH ]; then
+      service_path=$PATH
+      break
+    fi
+  done
+  printf '%s\n' "$service_path" > "$UMBRIEL_TEST_SERVICE_PATH"
   exit 0
 fi
 if [ "${3:-}" = "start" ] && [ "${4:-}" = "umbriel.service" ]; then
@@ -74,6 +93,11 @@ if [ "${3:-}" = "start" ] && [ "${4:-}" = "umbriel.service" ]; then
     printf 'XDG_SESSION_DESKTOP=%s\n' "${XDG_SESSION_DESKTOP-unset}"
     printf 'XDG_SESSION_TYPE=%s\n' "${XDG_SESSION_TYPE-unset}"
   } > "$UMBRIEL_TEST_SERVICE_SESSION_ENV"
+  IFS= read -r service_path < "$UMBRIEL_TEST_SERVICE_PATH"
+  (
+    export PATH="$service_path"
+    umbriel-session-profile-path-probe
+  ) 2>/dev/null || :
   exit 0
 fi
 exit 0
@@ -81,9 +105,7 @@ EOF
 
 cat > "$TEST_BIN/dbus-update-activation-environment" <<'EOF'
 #!/bin/sh
-if [ "$#" -ne 1 ] || [ "$1" != "--all" ]; then
-  exit 1
-fi
+printf '%s\n' "$@" > "$UMBRIEL_TEST_DBUS_IMPORT_TRACE"
 printf '%s\n' "${UMBRIEL_LOGIN_PROFILE_MARKER:-missing}" > "$UMBRIEL_TEST_DBUS_ENV"
 EOF
 
@@ -102,7 +124,8 @@ printf '%s\n' "$@" > "$UMBRIEL_TEST_DIRECT_ARGUMENTS"
 } > "$UMBRIEL_TEST_SESSION_ENV"
 EOF
 
-chmod 700 "$TEST_BIN/systemctl" "$TEST_BIN/dbus-update-activation-environment"
+chmod 700 "$TEST_BIN/systemctl" "$TEST_BIN/dbus-update-activation-environment" \
+  "$PROFILE_BIN/umbriel-session-profile-path-probe"
 
 env -i \
   HOME="$TEST_HOME" \
@@ -114,10 +137,15 @@ env -i \
   UMBRIEL_TEST_PROFILE_TRACE="$PROFILE_TRACE" \
   UMBRIEL_TEST_IMPORT_TRACE="$IMPORT_TRACE" \
   UMBRIEL_TEST_SERVICE_ENV="$SERVICE_ENV" \
+  UMBRIEL_TEST_SERVICE_PATH="$SERVICE_PATH" \
   UMBRIEL_TEST_SERVICE_SESSION_ENV="$SERVICE_SESSION_ENV" \
   UMBRIEL_TEST_DBUS_ENV="$DBUS_ENV" \
+  UMBRIEL_TEST_DBUS_IMPORT_TRACE="$DBUS_IMPORT_TRACE" \
+  UMBRIEL_TEST_PROFILE_BIN="$PROFILE_BIN" \
+  UMBRIEL_TEST_PROFILE_EXEC_TRACE="$PROFILE_EXEC_TRACE" \
   UMBRIEL_TEST_BIN="$TEST_BIN" \
   UMBRIEL_TEST_HOST_PATH="$PATH" \
+  UMBRIEL_TEST_MANAGER_PATH="$MANAGER_PATH" \
   UMBRIEL_TEST_SYSTEMD_AVAILABLE=true \
   drs="touch $DRS_INJECTION_MARKER" \
   "$LAUNCHER" plain "two words" 'semi;colon' "quote'and\"double"
@@ -134,8 +162,32 @@ if [[ $(< "$SERVICE_ENV") != 'from login profile' ]]; then
   echo "profile variable did not reach the compositor service"
   exit 1
 fi
+if [[ ! -f $PROFILE_EXEC_TRACE || $(< "$PROFILE_EXEC_TRACE") != launched ]]; then
+  echo "compositor service could not launch an executable from the login profile PATH"
+  exit 1
+fi
+if ! grep -Fxq PATH "$IMPORT_TRACE"; then
+  echo "login PATH was not included in the systemd environment import"
+  exit 1
+fi
+if [[ $(< "$SERVICE_PATH") != "$EXPECTED_LOGIN_PATH" ]]; then
+  echo "login PATH did not reach the compositor service"
+  exit 1
+fi
 if [[ $(< "$DBUS_ENV") != 'from login profile' ]]; then
   echo "profile variable did not reach D-Bus activation"
+  exit 1
+fi
+if grep -Fxq -- --all "$DBUS_IMPORT_TRACE"; then
+  echo "the full login environment was imported into D-Bus without filtering"
+  exit 1
+fi
+if ! grep -Fxq PATH "$DBUS_IMPORT_TRACE"; then
+  echo "login PATH was not included in the D-Bus environment import"
+  exit 1
+fi
+if ! grep -Fxq UMBRIEL_LOGIN_PROFILE_MARKER "$DBUS_IMPORT_TRACE"; then
+  echo "profile variable was not included in the D-Bus environment import"
   exit 1
 fi
 cat > "$TEST_DIR/expected-native-session-environment" <<'EOF'
@@ -163,6 +215,7 @@ env -i \
   UMBRIEL_TEST_DIRECT_ENV="$DIRECT_ENV" \
   UMBRIEL_TEST_DIRECT_ARGUMENTS="$DIRECT_ARGUMENTS" \
   UMBRIEL_TEST_SESSION_ENV="$DIRECT_SESSION_ENV" \
+  UMBRIEL_TEST_PROFILE_BIN="$PROFILE_BIN" \
   UMBRIEL_TEST_BIN="$TEST_BIN" \
   UMBRIEL_TEST_HOST_PATH="$PATH" \
   UMBRIEL_TEST_SYSTEMD_AVAILABLE=false \

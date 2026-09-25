@@ -618,6 +618,40 @@ UMBRIEL_TEST(windowRulesMergeMatchingFieldsInOrder) {
   CHECK(umbriel::anyWindowRuleHasTitlePattern(config));
 }
 
+// Decoration overrides merge per field like every other dynamic effect: the last
+// matching rule that names a key wins it, and a key no rule sets stays unset so
+// the window keeps the global [appearance] value.
+UMBRIEL_TEST(windowRuleDecorationOverridesMergePerField) {
+
+  Config config;
+
+  WindowRule app;
+  app.appIdPattern = "^foot$";
+  app.appIdRegex = std::regex(app.appIdPattern);
+  app.borderWidth = 0;
+  app.shadow = false;
+  app.outerBorderWidth = 3;
+  config.windowRules.push_back(std::move(app));
+
+  WindowRule title;
+  title.titlePattern = "editor";
+  title.titleRegex = std::regex(title.titlePattern);
+  title.cornerRadius = 0;
+  title.shadow = true;
+  config.windowRules.push_back(std::move(title));
+
+  const auto both = umbriel::resolveWindowRules(config, "foot", "editor", std::nullopt, ContentType::None, {}, 0);
+  CHECK(both.borderWidth && *both.borderWidth == 0);
+  CHECK(both.outerBorderWidth && *both.outerBorderWidth == 3);
+  CHECK(both.cornerRadius && *both.cornerRadius == 0);
+  CHECK(both.shadow && *both.shadow);
+
+  const auto appOnly = umbriel::resolveWindowRules(config, "foot", "docs", std::nullopt, ContentType::None, {}, 0);
+  CHECK(appOnly.borderWidth && *appOnly.borderWidth == 0);
+  CHECK(appOnly.shadow && !*appOnly.shadow);
+  CHECK(!appOnly.cornerRadius);
+}
+
 UMBRIEL_TEST(windowRulesMergeWorkspaceTargetsAcrossSelectorKinds) {
   Config config;
 
@@ -706,6 +740,35 @@ UMBRIEL_TEST(windowRulesMergeSizingFieldsLastWriterWins) {
   // A later rule selecting another unit replaces the earlier unit for that axis or extent.
   CHECK(resolved.defaultScrollingExtent && *resolved.defaultScrollingExtent == 0.75);
   CHECK(!resolved.defaultScrollingExtentPx);
+}
+
+UMBRIEL_TEST(windowRulesMergeBorderColorsLastWriterWins) {
+  Config config;
+
+  WindowRule app;
+  app.appIdPattern = "^foot$";
+  app.appIdRegex = std::regex(app.appIdPattern);
+  app.borderColorFocused = std::array<float, 4>{1.0F, 0.0F, 0.0F, 1.0F};
+  config.windowRules.push_back(std::move(app));
+
+  WindowRule title;
+  title.titlePattern = "shell";
+  title.titleRegex = std::regex(title.titlePattern);
+  title.borderColorFocused = std::array<float, 4>{0.0F, 1.0F, 0.0F, 1.0F};
+  title.borderColorOuter = std::array<float, 4>{0.1F, 0.2F, 0.3F, 1.0F};
+  config.windowRules.push_back(std::move(title));
+
+  const auto appOnly = umbriel::resolveWindowRules(config, "foot", "editor", std::nullopt, ContentType::None, {}, 0);
+  CHECK(appOnly.borderColorFocused && (*appOnly.borderColorFocused)[0] == 1.0F);
+  CHECK(!appOnly.borderColorUnfocused);
+  CHECK(!appOnly.borderColorOuter);
+
+  // Each key is independent: the later rule replaces only the keys it sets.
+  const auto merged =
+      umbriel::resolveWindowRules(config, "foot", "project shell", std::nullopt, ContentType::None, {}, 0);
+  CHECK(merged.borderColorFocused && (*merged.borderColorFocused)[1] == 1.0F);
+  CHECK(!merged.borderColorUnfocused);
+  CHECK(merged.borderColorOuter && (*merged.borderColorOuter)[2] == 0.3F);
 }
 
 UMBRIEL_TEST(windowRulesMatchContentTypesAndComposeSelectors) {

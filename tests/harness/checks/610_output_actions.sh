@@ -358,6 +358,55 @@ if [[ $dx -lt -3 || $dx -gt 3 || $dy -lt -3 || $dy -gt 3 ]]; then
 fi
 accepts "window-toggle-floating" # restore tiled
 
+spawn_client window-toggle-unfoucsed
+wait_for_windows 2
+
+read -r id <<< "$(jq -r '.[0].id' <<< "$("$UMBRIEL" windows --json)")"
+accepts "window-focus:$id"
+
+read -r unfocused_id started_focused started_floating <<< "$(jq -r '.[1] | "\(.id) \(.focused) \(.floating)"' <<< "$("$UMBRIEL" windows --json)")"
+accepts "window-toggle-floating:$unfocused_id"
+read -r ended_focused ended_floating <<< "$(jq -r '.[1] | "\(.focused) \(.floating)"' <<< "$("$UMBRIEL" windows --json )")"
+
+if [[ $started_focused == false && $ended_focused == true ]]; then
+  echo "Window stole focus when toggled"
+  exit 1
+fi
+
+if [[ $started_floating == false && $ended_floating == false ]]; then
+  echo "Window did not start floating"
+  exit 1
+fi
+
+accepts "window-toggle-floating:$unfocused_id"
+
+accepts "window-move-to-scratchpad"
+accepts "scratchpad-toggle"
+
+read -r active focused <<< "$(jq '.[0] | "\(.active) \(.focused)"' <<< "$("$UMBRIEL" windows --json)")"
+if [[ $active == false || $focused == true ]]; then
+  echo "Scrachpad window is not behaving properly"
+  exit 1
+fi
+
+accepts "window-toggle-floating:$unfocused_id"
+read -r ended_active ended_floating <<< "$(jq -r '.[1] | "\(.active) \(.floating)"' <<< "$("$UMBRIEL" windows --json )")"
+
+if [[ $ended_active == true ]]; then
+  echo "Scratchpad should be active, not floating window"
+  exit 1
+fi
+
+if [[ $ended_floating == false ]]; then
+  echo "Window did not start floating with scratchpad visible"
+  exit 1
+fi
+
+accepts "window-toggle-floating:$unfocused_id"
+accepts "window-restore-from-scratchpad"
+
+accepts "window-close"
+
 # workspace-set-layout
 spawn_client dwindle-b
 spawn_client dwindle-c
@@ -376,10 +425,10 @@ if [[ $min_h -ge 600 ]]; then
 fi
 
 # column-center rejects over IPC outside scrolling without changing geometry.
-sleep 0.5
+"$UMBRIEL" settle
 dwindle_geometry=$("$UMBRIEL" windows --json | jq -c 'sort_by(.id) | map({id, x, y, w, h})')
 rejects_with "column-center" "requires the scrolling layout"
-sleep 0.2
+"$UMBRIEL" settle
 after_center=$("$UMBRIEL" windows --json | jq -c 'sort_by(.id) | map({id, x, y, w, h})')
 if [[ $after_center != "$dwindle_geometry" ]]; then
   echo "column-center changed dwindle geometry: $dwindle_geometry -> $after_center"
