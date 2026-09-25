@@ -724,7 +724,7 @@ namespace umbriel {
     }
 
     const double sample = linear * static_cast<double>(kSampleCount);
-    const std::size_t lower = static_cast<std::size_t>(sample);
+    const auto lower = static_cast<std::size_t>(sample);
     const double fraction = sample - static_cast<double>(lower);
     return std::lerp(m_progress[lower], m_progress[lower + 1], fraction);
   }

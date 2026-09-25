@@ -492,7 +492,7 @@ namespace umbriel {
       if (!req.contains("arg") || !req["arg"].is_string()) {
         return R"({"err":"malformed request"})";
       }
-      const std::string& arg = req["arg"].get_ref<const std::string&>();
+      const auto& arg = req["arg"].get_ref<const std::string&>();
       uint64_t ms = 0;
       const auto [end, error] = std::from_chars(arg.data(), arg.data() + arg.size(), ms);
       if (error != std::errc{} || end != arg.data() + arg.size() || ms == 0) {

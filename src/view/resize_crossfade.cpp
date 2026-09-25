@@ -164,7 +164,8 @@ namespace umbriel {
   }
 
   void ResizeCrossfade::onTreeDestroy(wl_listener* listener, void* /*data*/) {
-    ResizeCrossfade* self = wl_container_of(listener, self, m_treeDestroy);
+    ResizeCrossfade* self;
+    self = wl_container_of(listener, self, m_treeDestroy);
     // The view tree is being torn down with this child in it; forget the nodes without touching them again.
     wl_list_remove(&self->m_treeDestroy.link);
     self->m_tree = nullptr;
