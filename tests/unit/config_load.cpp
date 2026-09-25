@@ -1048,6 +1048,36 @@ UMBRIEL_TEST(overviewWorkspaceCurveLoadsAndFallsBackToItsSpring) {
   CHECK_EQ(store.config().animation.overview.workspaceCurve.spring.stiffness, 1000.0);
 }
 
+UMBRIEL_TEST(durationBesideASpringCurveIsReportedAsInert) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  // A spring derives its own length, so the duration next to it reaches nothing and must not look honoured.
+  file.write("[animation.windows_in]\nduration_ms = 200\ncurve = \"spring:1,1000\"\n");
+  CHECK(store.reload().success);
+  CHECK(containsDiagnostic(store, "animation.windows_in.duration_ms has no effect"));
+
+  // The same duration with a duration-based curve is honoured and silent.
+  file.write("[animation.windows_in]\nduration_ms = 200\ncurve = \"easeout\"\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().animation.windowsIn.durationMs, 200);
+  CHECK(!containsDiagnostic(store, "has no effect"));
+
+  // A shared spring curve makes every event derive its length, which leaves the shared duration inert too.
+  file.write("[animation]\nduration_ms = 200\ncurve = \"spring:1,1000\"\n");
+  CHECK(store.reload().success);
+  CHECK(containsDiagnostic(store, "animation.duration_ms has no effect"));
+
+  // One duration-based event is enough for the shared duration to reach something.
+  file.write(
+      "[animation]\nduration_ms = 200\ncurve = \"spring:1,1000\"\n\n[animation.workspaces]\ncurve = \"easeout\"\n"
+  );
+  CHECK(store.reload().success);
+  CHECK(!containsDiagnostic(store, "animation.duration_ms has no effect"));
+  CHECK_EQ(store.config().animation.workspaces.durationMs, 200);
+}
+
 UMBRIEL_TEST(overviewWorkspaceWallpaperLoads) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();
@@ -1106,8 +1136,7 @@ UMBRIEL_TEST(colorsSectionOwnsEveryColor) {
 
   file.write(
       "[colors]\ninsert_hint = \"#11223344\"\nbackdrop = \"#55667788\"\nshadow = \"#99AABBCC\"\n"
-      "[colors.border]\nfocused = \"#01020304\"\nunfocused = \"#05060708\"\n"
-      "scratchpad_focused = \"#090A0B0C\"\nscratchpad_unfocused = \"#0D0E0F10\"\nouter = \"#11121314\"\n"
+      "[colors.border]\nfocused = \"#01020304\"\nunfocused = \"#05060708\"\nouter = \"#11121314\"\n"
       "[colors.overview]\nbackground_tint = \"#15161718\"\nworkspace_background = \"#191A1B1C\"\n"
       "badge = \"#12345678\"\n"
   );
@@ -1118,13 +1147,48 @@ UMBRIEL_TEST(colorsSectionOwnsEveryColor) {
   CHECK_EQ(colors.shadow[3], 204.0F / 255.0F);
   CHECK_EQ(colors.border.focused[3], 4.0F / 255.0F);
   CHECK_EQ(colors.border.unfocused[0], 5.0F / 255.0F);
-  CHECK_EQ(colors.border.scratchpadFocused[1], 10.0F / 255.0F);
-  CHECK_EQ(colors.border.scratchpadUnfocused[2], 15.0F / 255.0F);
   CHECK_EQ(colors.border.outer[0], 17.0F / 255.0F);
   CHECK_EQ(colors.overview.backgroundTint[1], 22.0F / 255.0F);
   CHECK_EQ(colors.overview.workspaceBackground[2], 27.0F / 255.0F);
   CHECK_EQ(colors.overview.badge[0], 18.0F / 255.0F);
   CHECK_EQ(colors.overview.badge[3], 120.0F / 255.0F);
+}
+
+// Per-window border colors override the global [colors.border] defaults and are read from window rules.
+UMBRIEL_TEST(windowRuleBorderColorsLoad) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write(
+      "[[window_rule]]\nmatch.is_scratchpad = true\n"
+      "border_color_focused = \"#E5C07BFF\"\nborder_color_unfocused = \"#5C4A2AFF\"\n"
+      "border_color_outer = \"#2A2010FF\"\n"
+      "[[window_rule]]\nmatch.app_id = \"^foot$\"\nborder_color_focused = \"#FF6B6BFF\"\n"
+  );
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().windowRules.size(), size_t{2});
+
+  const auto& scratchpad = store.config().windowRules[0];
+  CHECK(scratchpad.matchScratchpad && *scratchpad.matchScratchpad);
+  CHECK(scratchpad.borderColorFocused && (*scratchpad.borderColorFocused)[0] == 229.0F / 255.0F);
+  CHECK(scratchpad.borderColorFocused && (*scratchpad.borderColorFocused)[3] == 1.0F);
+  CHECK(scratchpad.borderColorUnfocused && (*scratchpad.borderColorUnfocused)[1] == 74.0F / 255.0F);
+  CHECK(scratchpad.borderColorOuter && (*scratchpad.borderColorOuter)[2] == 16.0F / 255.0F);
+  CHECK(!containsDiagnostic(store, "unknown key window_rule.border_color_outer"));
+
+  // Each key is independent: a rule that sets only some of them leaves the rest unset.
+  const auto& foot = store.config().windowRules[1];
+  CHECK(foot.borderColorFocused && (*foot.borderColorFocused)[0] == 1.0F);
+  CHECK(!foot.borderColorUnfocused);
+  CHECK(!foot.borderColorOuter);
+
+  // A non-color value is rejected on the same keys.
+  file.write("[[window_rule]]\nborder_color_focused = 12\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().windowRules.size(), size_t{1});
+  CHECK(!store.config().windowRules[0].borderColorFocused);
+  CHECK(containsDiagnostic(store, "ignoring window_rule.border_color_focused (expected color"));
 }
 
 // Colors are recognized only inside [colors]; anywhere else they are ordinary
@@ -2105,9 +2169,7 @@ UMBRIEL_TEST(windowRuleDecorationKeysAreRead) {
   CHECK(rule.borderWidth && *rule.borderWidth == 0);
   CHECK(rule.cornerRadius && *rule.cornerRadius == 0);
   CHECK(rule.shadow && !*rule.shadow);
-  CHECK(!containsDiagnostic(store, "border_width"));
-  CHECK(!containsDiagnostic(store, "corner_radius"));
-  CHECK(!containsDiagnostic(store, "shadow"));
+  CHECK(store.diagnostics().empty());
 }
 
 UMBRIEL_TEST(emptyRuleArrayDropsRulesFromIncludes) {
@@ -2682,7 +2744,8 @@ scale = 0.7
 
 [animation.windows_out]
 curve = "bouncy"
-style = "slide"
+style = "popin"
+scale = 0.6
 
 [animation.overview]
 enabled = false
@@ -2709,7 +2772,8 @@ blur = true
   CHECK_EQ(animation.windowsIn.style, std::string{"zoom"});
   CHECK_EQ(animation.windowsIn.scale, 0.7);
   CHECK(animation.windowsOut.curve.easing == umbriel::Easing::Spring);
-  CHECK_EQ(animation.windowsOut.style, std::string{"slide"});
+  CHECK_EQ(animation.windowsOut.style, std::string{"popin"});
+  CHECK_EQ(animation.windowsOut.scale, 0.6);
   CHECK(!animation.overview.enabled);
   CHECK_EQ(animation.overview.durationMs, 700);
   CHECK(animation.overview.curve.easing == umbriel::Easing::CustomBezier);

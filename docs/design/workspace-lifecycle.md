@@ -75,6 +75,16 @@ restriction.
 
 Mapping a window, activating a workspace, or running a layout command can
 replace the scene under a stationary pointer without crossing a window border.
+
+Clients learn the pointer position only from `wl_pointer.enter` and `motion`,
+and a button event carries no coordinates. Umbriel therefore hit-tests again
+before delivering every press and sends a motion when the surface under the
+cursor has moved. It also re-resolves the pointer after any output frame whose
+scene changed, once animations, gestures, and the overview on that output have
+settled, so hover state follows content that moved under a still cursor. That
+refresh never changes keyboard focus, and it pauses while a button is held so an
+implicit grab keeps the coordinate space of its press.
+
 With `follows_mouse` enabled, Umbriel does not override the established focus
 immediately. The focus transition or successful command instead invalidates the
 previous hover decision once. The next eligible pointer motion can therefore
@@ -83,12 +93,24 @@ fall inside it. After that one refresh, hover returns to geometric
 border-crossing detection so scrolling animations cannot cascade focus through
 windows moving beneath the pointer.
 
+The hover decision compares against seat-global activation, not a workspace's
+remembered focus. A pinned window can retain seat focus while following the
+output away from its owning workspace; leaving it must still activate the view
+under the pointer even when the active workspace already remembers that view.
+
 This distinction matters when a second window maps away from the cursor and
 when returning to a workspace whose remembered focused window is elsewhere. It
 also covers explicit strip scrolling, column resizing or reordering, and leaving
-fullscreen when those commands reveal a different window. In each case, a small
-motion inside the window under the pointer is sufficient; the pointer does not
-need to leave and re-enter its border.
+fullscreen when it reveals a different window. Fullscreen exits behave the same
+whether Umbriel runs a configured action or a client such as a browser or media
+player leaves video fullscreen through XDG shell. In each case, a small motion
+inside the window under the pointer is sufficient; the pointer does not need to
+leave and re-enter its border.
+
+Normal tiled close replacement preserves geometric proximity between columns.
+When it must cross into a surviving column with several rows, it resolves those
+rows through the global focus history. Visual row order describes placement,
+not which member the user focused before opening the window that just closed.
 
 Closing a focused Dwindle or master tile is a bounded exception. Umbriel records
 the pointer position only when the closing view owns keyboard focus, is visibly
@@ -196,10 +218,16 @@ workspace is covered by
 [`tests/harness/checks/511_spawn_hover_focus.sh`](../../tests/harness/checks/511_spawn_hover_focus.sh)
 and
 [`tests/harness/checks/512_workspace_return_hover_focus.sh`](../../tests/harness/checks/512_workspace_return_hover_focus.sh).
+The handoff from a pinned window owned by another workspace is covered by
+[`tests/harness/checks/512_pinned_workspace_hover_focus.sh`](../../tests/harness/checks/512_pinned_workspace_hover_focus.sh).
+Scrolling close restoration within a stacked neighboring column is covered by
+[`tests/harness/checks/225_scrolling_close_focus_memory.sh`](../../tests/harness/checks/225_scrolling_close_focus_memory.sh).
 Scrolling reveal animations are kept from cascading hover focus by
 [`tests/harness/checks/513_scrolling_hover_focus_stability.sh`](../../tests/harness/checks/513_scrolling_hover_focus_stability.sh).
 Command-driven strip scrolling, resizing, column movement, and fullscreen exit
 are covered by the `518_*_hover_focus.sh` checks.
+Client-requested XDG fullscreen exit is covered by
+[`tests/harness/checks/519_client_fullscreen_exit_hover_focus.sh`](../../tests/harness/checks/519_client_fullscreen_exit_hover_focus.sh).
 Modifier-wheel switching and the resulting keyboard-focus handoff through an
 input-method keyboard grab are covered by
 [`tests/harness/checks/520_input_method_wheel.sh`](../../tests/harness/checks/520_input_method_wheel.sh).

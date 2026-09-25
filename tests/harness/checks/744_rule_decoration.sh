@@ -60,28 +60,16 @@ wait_mapped() {
   exit 1
 }
 
-# Window opens and the config reload animate, so a single grab can catch a moving
-# frame. Grab until two consecutive frames a quarter second apart match: that gap
-# is wider than the 200ms default animation, so this loop is the barrier and the
-# primer below only guarantees the animation has started.
+# Window opens and the config reload animate; settle waits for every timeline to reach rest before the grab.
 shot_settled() {
-  local previous="$UMBRIEL_RUNTIME_DIR/.decoration-settle.png"
-  grim -o HEADLESS-1 "$previous"
-  for _ in $(seq 24); do
-    sleep 0.25
-    grim -o HEADLESS-1 "$SCREENSHOT"
-    cmp -s "$previous" "$SCREENSHOT" && return 0
-    mv "$SCREENSHOT" "$previous"
-  done
-  echo "HEADLESS-1 never settled"
-  exit 1
+  "$UMBRIEL" settle
+  grim -o HEADLESS-1 "$SCREENSHOT"
 }
 
 "$CLIENT" bare-window > "$UMBRIEL_RUNTIME_DIR/rule-decoration-bare.log" 2>&1 &
 wait_mapped bare-window
 "$CLIENT" framed-window > "$UMBRIEL_RUNTIME_DIR/rule-decoration-framed.log" 2>&1 &
 wait_mapped framed-window
-sleep 0.3
 
 BARE=$(window_of bare-window)
 FRAMED=$(window_of framed-window)

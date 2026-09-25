@@ -38,34 +38,23 @@ namespace umbriel {
     }
   }
 
-  int ViewDecoration::borderWidth() const { return m_ruleBorderWidth.value_or(config().appearance.borderWidth); }
-
-  int ViewDecoration::totalBorderWidth() const { return borderWidth() + config().appearance.outerBorderWidth; }
-
-  int ViewDecoration::cornerRadius() const { return m_ruleCornerRadius.value_or(config().appearance.cornerRadius); }
-
-  bool ViewDecoration::shadowEnabled() const { return m_ruleShadow.value_or(config().appearance.shadow.enabled); }
-
   void ViewDecoration::updateBorderGeometry(int contentWidth, int contentHeight) {
     if (m_border == nullptr) {
       return;
     }
 
     const int outerWidth = config().appearance.outerBorderWidth;
-    const int width = borderWidth();
     applyBorderGeometry(
-        m_border, makeBorderRing(contentWidth, contentHeight, cornerRadius(), width, outerWidth), width, outerWidth
+        m_border, makeBorderRing(contentWidth, contentHeight, m_cornerRadius, m_borderWidth, outerWidth), m_borderWidth,
+        outerWidth
     );
   }
 
-  void ViewDecoration::setBorderColor(bool focused, bool scratchpad, float alpha) {
+  void ViewDecoration::setBorderColor(bool focused, float alpha) {
     if (m_borderTree == nullptr) {
       return;
     }
-    const auto& baseColor = scratchpad
-        ? (focused ? config().colors.border.scratchpadFocused : config().colors.border.scratchpadUnfocused)
-        : (focused ? config().colors.border.focused : config().colors.border.unfocused);
-    setBorderRawColor(baseColor, alpha);
+    setBorderRawColor(focused ? m_borderColors.focused : m_borderColors.unfocused, alpha);
   }
 
   void ViewDecoration::setBorderRawColor(const std::array<float, 4>& baseColor, float alpha) {
@@ -75,7 +64,7 @@ namespace umbriel {
     float innerColor[4];
     float outerColor[4];
     premultiplied(innerColor, baseColor, alpha);
-    premultiplied(outerColor, config().colors.border.outer, alpha);
+    premultiplied(outerColor, m_borderColors.outer, alpha);
     wlr_scene_border_set_colors(m_border, innerColor, outerColor);
   }
 
@@ -84,12 +73,14 @@ namespace umbriel {
       return false;
     }
     const BorderRing ring = makeBorderRing(
-        contentWidth, contentHeight, cornerRadius(), borderWidth(), config().appearance.outerBorderWidth
+        contentWidth, contentHeight, m_cornerRadius, m_borderWidth, config().appearance.outerBorderWidth
     );
     return m_border->width != ring.box.width || m_border->height != ring.box.height;
   }
 
-  void ViewDecoration::snapshotBorders(wlr_scene_tree* snapshot, bool focused, std::vector<BorderSnapshot>& out) const {
+  void ViewDecoration::snapshotBorders(
+      wlr_scene_tree* snapshot, const std::array<float, 4>& innerColor, float opacity, std::vector<BorderSnapshot>& out
+  ) const {
     if (!bordersVisible() || m_border == nullptr) {
       return;
     }
@@ -106,17 +97,28 @@ namespace umbriel {
         &copy->node, m_borderTree->node.x + m_border->node.x, m_borderTree->node.y + m_border->node.y
     );
     wlr_scene_node_copy_animations_for_snapshot(&copy->node, &m_borderTree->node);
-    out.push_back(
-        BorderSnapshot{
-            .node = copy,
-            .innerColor = focused ? config().colors.border.focused : config().colors.border.unfocused,
-            .outerColor = config().colors.border.outer,
-        }
-    );
+    // Straight colours at the opacity the ring is drawn with right now, so the fade starts from what is on screen
+    // and stays in step with the content buffers, which keep their current opacity as their base.
+    BorderSnapshot captured{
+        .node = copy,
+        .innerColor = innerColor,
+        .outerColor = m_borderColors.outer,
+        .innerWidth = m_borderWidth,
+        .outerWidth = config().appearance.outerBorderWidth,
+        .cornerRadius = m_cornerRadius,
+    };
+    captured.innerColor[3] *= opacity;
+    captured.outerColor[3] *= opacity;
+    out.push_back(captured);
   }
 
-  // Blur
   bool ViewDecoration::applyRule(const ResolvedWindowRule& rule) {
+    const auto& border = config().colors.border;
+    m_borderColors = {
+        .focused = rule.borderColorFocused.value_or(border.focused),
+        .unfocused = rule.borderColorUnfocused.value_or(border.unfocused),
+        .outer = rule.borderColorOuter.value_or(border.outer),
+    };
     m_blurOptions = SurfaceBlurOptions{
         .ignoreAlpha = static_cast<float>(rule.blurIgnoreAlpha.value_or(0.0)),
         .enabled = rule.blur.value_or(false),
@@ -127,14 +129,18 @@ namespace umbriel {
         .enabled = rule.blurPopups.value_or(false),
         .optimized = rule.blurOptimized,
     };
-    const bool chromeChanged =
-        m_ruleBorderWidth != rule.borderWidth || m_ruleCornerRadius != rule.cornerRadius || m_ruleShadow != rule.shadow;
-    m_ruleBorderWidth = rule.borderWidth;
-    m_ruleCornerRadius = rule.cornerRadius;
+    const auto& appearance = config().appearance;
+    const int borderWidth = rule.borderWidth.value_or(appearance.borderWidth);
+    const int cornerRadius = rule.cornerRadius.value_or(appearance.cornerRadius);
+    const bool changed = borderWidth != m_borderWidth || cornerRadius != m_cornerRadius || rule.shadow != m_ruleShadow;
+    m_borderWidth = borderWidth;
+    m_cornerRadius = cornerRadius;
     m_ruleShadow = rule.shadow;
-    return chromeChanged;
+    m_shadow.setEnabled(rule.shadow);
+    return changed;
   }
 
+  // Blur
   void ViewDecoration::updateBlur(
       wlr_scene_tree* tree, wlr_surface* surface, const wlr_box& nodeBox, const wlr_box& geometry, int radius,
       const wlr_box* clip, float surfaceOpacity, float blurAlpha
@@ -146,50 +152,49 @@ namespace umbriel {
   void ViewDecoration::hideBlur() { m_blur.hide(); }
 
   // Shadow
-  void ViewDecoration::reparentShadow(wlr_scene_tree* layer, int x, int y, bool enabled) {
-    if (layer == nullptr) {
-      m_shadow.reset();
-      if (m_shadowContainer != nullptr) {
-        wlr_scene_node_destroy(&m_shadowContainer->node);
-        m_shadowContainer = nullptr;
-      }
+  void ViewDecoration::createShadow(wlr_scene_tree* frame) {
+    m_shadowContainer = wlr_scene_tree_create(frame);
+    wlr_scene_node_lower_to_bottom(&m_shadowContainer->node);
+  }
+
+  void ViewDecoration::poolShadow(wlr_scene_tree* frame, wlr_scene_tree* pool, int x, int y, bool enabled) {
+    if (m_shadowContainer == nullptr) {
       return;
     }
-    if (m_shadowContainer == nullptr) {
-      m_shadowContainer = wlr_scene_tree_create(layer);
-    } else {
-      wlr_scene_node_reparent(&m_shadowContainer->node, layer);
+    if (pool == nullptr) {
+      if (!m_shadowPooled) {
+        return;
+      }
+      wlr_scene_node_reparent(&m_shadowContainer->node, frame);
+      wlr_scene_node_lower_to_bottom(&m_shadowContainer->node);
+      wlr_scene_node_set_position(&m_shadowContainer->node, 0, 0);
+      wlr_scene_node_set_enabled(&m_shadowContainer->node, true);
+      m_shadowPooled = false;
+      return;
     }
+    wlr_scene_node_reparent(&m_shadowContainer->node, pool);
     wlr_scene_node_set_position(&m_shadowContainer->node, x, y);
     wlr_scene_node_set_enabled(&m_shadowContainer->node, enabled);
+    m_shadowPooled = true;
   }
 
   void ViewDecoration::setShadowPosition(int x, int y) {
-    if (m_shadowContainer != nullptr) {
+    if (m_shadowPooled) {
       wlr_scene_node_set_position(&m_shadowContainer->node, x, y);
     }
   }
 
   void ViewDecoration::setShadowEnabled(bool enabled) {
-    if (m_shadowContainer != nullptr) {
+    if (m_shadowPooled) {
       wlr_scene_node_set_enabled(&m_shadowContainer->node, enabled);
     }
   }
 
-  void ViewDecoration::raiseShadowToTop() {
-    if (m_shadowContainer != nullptr) {
-      wlr_scene_node_raise_to_top(&m_shadowContainer->node);
-    }
-  }
-
-  void ViewDecoration::updateShadow(int contentWidth, int contentHeight, int borderInset, int outerRadius) {
+  void ViewDecoration::updateShadow(int contentWidth, int contentHeight, int borderInset, int cornerRadius) {
     if (m_shadowContainer == nullptr) {
       return;
     }
-    // std::nullopt leaves the global switch in charge; an explicit value overrides
-    // it either way, so a rule can drop a shadow or draw one the global config does not.
-    m_shadow.setEnabled(m_ruleShadow);
-    m_shadow.update(m_shadowContainer, contentWidth, contentHeight, borderInset, outerRadius);
+    m_shadow.update(m_shadowContainer, contentWidth, contentHeight, borderInset, cornerRadius);
   }
 
   void ViewDecoration::hideShadow() { m_shadow.hide(); }

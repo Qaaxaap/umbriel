@@ -368,6 +368,9 @@ namespace {
     case A::ColumnMoveToWorkspaceNext:
     case A::ColumnMoveToWorkspacePrevious:
     case A::WindowMoveToWorkspace:
+    case A::WindowMoveToWorkspaceSilent:
+    case A::WindowMoveToWorkspaceSilentNext:
+    case A::WindowMoveToWorkspaceSilentPrevious:
     case A::WindowMoveToWorkspaceNext:
     case A::WindowMoveToWorkspacePrevious:
     case A::WorkspaceNext:
@@ -701,6 +704,7 @@ namespace umbriel {
     collapseWorkspaceRuns(KeybindAction::WorkspaceSwitch);
     collapseWorkspaceRuns(KeybindAction::ColumnMoveToWorkspace);
     collapseWorkspaceRuns(KeybindAction::WindowMoveToWorkspace);
+    collapseWorkspaceRuns(KeybindAction::WindowMoveToWorkspaceSilent);
 
     return rows;
   }

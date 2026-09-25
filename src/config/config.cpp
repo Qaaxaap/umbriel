@@ -931,8 +931,6 @@ namespace umbriel {
         s.sub("border", [&](Section& border) {
           border.color("focused", colors.border.focused)
               .color("unfocused", colors.border.unfocused)
-              .color("scratchpad_focused", colors.border.scratchpadFocused)
-              .color("scratchpad_unfocused", colors.border.scratchpadUnfocused)
               .color("outer", colors.border.outer);
         });
 
@@ -989,7 +987,7 @@ namespace umbriel {
           || *damping < 0.01
           || *damping > 5.0
           || *stiffness < 1.0
-          || *stiffness > 1000.0) {
+          || *stiffness > 10000.0) {
         return std::nullopt;
       }
       return SpringConfig{.damping = *damping, .stiffness = *stiffness};
@@ -1113,6 +1111,23 @@ namespace umbriel {
       const auto readCurve = [&](Section& section, std::string_view context, AnimationCurve& target) {
         readCurveKey(section, "curve", context, target);
       };
+      // duration_ms and curve resolve together, because a spring derives its own length: a duration configured
+      // beside one reaches nothing and has to say so rather than look honoured.
+      const auto readTimeline = [&](Section& section, std::string_view context, int& duration, AnimationCurve& curve) {
+        std::optional<int> configured;
+        section.integer("duration_ms", 1, 10000, configured);
+        readCurve(section, context, curve);
+        if (!configured) {
+          return;
+        }
+        duration = *configured;
+        if (curve.easing != Easing::Spring) {
+          return;
+        }
+        if (const toml::node* node = section.node("duration_ms")) {
+          warnAt(node->source(), "{}.duration_ms has no effect: its spring curve sets its own length", context);
+        }
+      };
       const auto readStyle = [](Section& section, std::string& target,
                                 std::initializer_list<std::string_view> allowed) {
         std::string parsed = target;
@@ -1130,36 +1145,30 @@ namespace umbriel {
 
       s.sub("windows_in", [&](Section& section) {
         readShader(section, animation.windowsIn);
-        section.boolean("enabled", animation.windowsIn.enabled)
-            .integer("duration_ms", 1, 10000, animation.windowsIn.durationMs)
-            .real("scale", 0.1, 1.0, animation.windowsIn.scale);
+        section.boolean("enabled", animation.windowsIn.enabled).real("scale", 0.1, 1.0, animation.windowsIn.scale);
         readStyle(section, animation.windowsIn.style, {"popin", "zoom", "slide", "fade", "none"});
-        readCurve(section, "animation.windows_in", animation.windowsIn.curve);
+        readTimeline(section, "animation.windows_in", animation.windowsIn.durationMs, animation.windowsIn.curve);
       });
       s.sub("windows_out", [&](Section& section) {
         readShader(section, animation.windowsOut);
-        section.boolean("enabled", animation.windowsOut.enabled)
-            .integer("duration_ms", 1, 10000, animation.windowsOut.durationMs);
-        readStyle(section, animation.windowsOut.style, {"fade", "slide"});
-        readCurve(section, "animation.windows_out", animation.windowsOut.curve);
+        section.boolean("enabled", animation.windowsOut.enabled).real("scale", 0.1, 1.0, animation.windowsOut.scale);
+        readStyle(section, animation.windowsOut.style, {"fade", "slide", "popin", "zoom"});
+        readTimeline(section, "animation.windows_out", animation.windowsOut.durationMs, animation.windowsOut.curve);
       });
       s.sub("windows_move", [&](Section& section) {
         readShader(section, animation.windowsMove);
-        section.boolean("enabled", animation.windowsMove.enabled)
-            .integer("duration_ms", 1, 10000, animation.windowsMove.durationMs);
-        readCurve(section, "animation.windows_move", animation.windowsMove.curve);
+        section.boolean("enabled", animation.windowsMove.enabled);
+        readTimeline(section, "animation.windows_move", animation.windowsMove.durationMs, animation.windowsMove.curve);
       });
       s.sub("workspaces", [&](Section& section) {
         readShader(section, animation.workspaces);
-        section.boolean("enabled", animation.workspaces.enabled)
-            .integer("duration_ms", 1, 10000, animation.workspaces.durationMs);
-        readCurve(section, "animation.workspaces", animation.workspaces.curve);
+        section.boolean("enabled", animation.workspaces.enabled);
+        readTimeline(section, "animation.workspaces", animation.workspaces.durationMs, animation.workspaces.curve);
       });
       s.sub("overview", [&](Section& section) {
         readShader(section, animation.overview);
-        section.boolean("enabled", animation.overview.enabled)
-            .integer("duration_ms", 1, 10000, animation.overview.durationMs);
-        readCurve(section, "animation.overview", animation.overview.curve);
+        section.boolean("enabled", animation.overview.enabled);
+        readTimeline(section, "animation.overview", animation.overview.durationMs, animation.overview.curve);
         readCurveKey(
             section, "workspace_curve", "animation.overview.workspace_curve", animation.overview.workspaceCurve
         );
@@ -1167,33 +1176,45 @@ namespace umbriel {
       s.sub("scratchpad", [&](Section& section) {
         readShader(section, animation.scratchpad);
         section.boolean("enabled", animation.scratchpad.enabled)
-            .integer("duration_ms", 1, 10000, animation.scratchpad.durationMs)
             .real("dim", 0.0, 1.0, animation.scratchpad.dim)
             .boolean("blur", animation.scratchpad.blur)
             .real("scale", 0.0, 1.0, animation.scratchpad.scale)
             .boolean("maximize", animation.scratchpad.maximize)
             .boolean("fullscreen", animation.scratchpad.fullscreen);
-        readCurve(section, "animation.scratchpad", animation.scratchpad.curve);
+        readTimeline(section, "animation.scratchpad", animation.scratchpad.durationMs, animation.scratchpad.curve);
       });
       s.sub("border", [&](Section& section) {
         readShader(section, animation.border);
-        section.boolean("enabled", animation.border.enabled)
-            .integer("duration_ms", 1, 10000, animation.border.durationMs);
-        readCurve(section, "animation.border", animation.border.curve);
+        section.boolean("enabled", animation.border.enabled);
+        readTimeline(section, "animation.border", animation.border.durationMs, animation.border.curve);
       });
       s.sub("dim_unfocused", [&](Section& section) {
         readShader(section, animation.dimUnfocused);
-        section.boolean("enabled", animation.dimUnfocused.enabled)
-            .integer("duration_ms", 1, 10000, animation.dimUnfocused.durationMs)
-            .real("dim", 0.0, 1.0, animation.dimUnfocused.dim);
-        readCurve(section, "animation.dim_unfocused", animation.dimUnfocused.curve);
+        section.boolean("enabled", animation.dimUnfocused.enabled).real("dim", 0.0, 1.0, animation.dimUnfocused.dim);
+        readTimeline(
+            section, "animation.dim_unfocused", animation.dimUnfocused.durationMs, animation.dimUnfocused.curve
+        );
       });
       s.sub("layers", [&](Section& section) {
         readShader(section, animation.layers);
-        section.boolean("enabled", animation.layers.enabled)
-            .integer("duration_ms", 1, 10000, animation.layers.durationMs);
-        readCurve(section, "animation.layers", animation.layers.curve);
+        section.boolean("enabled", animation.layers.enabled);
+        readTimeline(section, "animation.layers", animation.layers.durationMs, animation.layers.curve);
       });
+
+      // The shared duration reaches nothing once every timeline it feeds derives its own length.
+      if (defaultDuration) {
+        const std::array timelines{animation.windowsIn.curve.easing,    animation.windowsOut.curve.easing,
+                                   animation.windowsMove.curve.easing,  animation.workspaces.curve.easing,
+                                   animation.overview.curve.easing,     animation.overview.workspaceCurve.easing,
+                                   animation.scratchpad.curve.easing,   animation.border.curve.easing,
+                                   animation.dimUnfocused.curve.easing, animation.layers.curve.easing};
+        const bool allSprings = std::ranges::all_of(timelines, [](Easing easing) { return easing == Easing::Spring; });
+        if (allSprings) {
+          if (const toml::node* node = s.node("duration_ms")) {
+            warnAt(node->source(), "animation.duration_ms has no effect: every animation curve is a spring");
+          }
+        }
+      }
     }
 
     void readAnimation(Section& root, Config& loaded) {
@@ -1207,7 +1228,8 @@ namespace umbriel {
             .integer("outer_border_width", 0, 100, appearance.outerBorderWidth)
             .integer("corner_radius", 0, 100, appearance.cornerRadius)
             .real("drag_opacity", 0.0, 1.0, appearance.dragOpacity)
-            .boolean("prefer_no_csd", appearance.preferNoCsd);
+            .boolean("prefer_no_csd", appearance.preferNoCsd)
+            .boolean("opaque_fullscreen", appearance.opaqueFullscreen);
 
         s.sub("blur", [&](Section& blur) {
           blur.boolean("enabled", appearance.blur.enabled)
@@ -2096,11 +2118,14 @@ namespace umbriel {
             .boolean("blur", rule.blur)
             .boolean("blur_popups", rule.blurPopups)
             .boolean("blur_optimized", rule.blurOptimized)
-            .boolean("shadow", rule.shadow)
             .real("opacity", 0.0, 1.0, rule.opacity)
             .real("blur_ignore_alpha", 0.0, 1.0, rule.blurIgnoreAlpha)
+            .color("border_color_focused", rule.borderColorFocused)
+            .color("border_color_unfocused", rule.borderColorUnfocused)
+            .color("border_color_outer", rule.borderColorOuter)
             .integer("border_width", 0, 100, rule.borderWidth)
-            .integer("corner_radius", 0, 100, rule.cornerRadius);
+            .integer("corner_radius", 0, 100, rule.cornerRadius)
+            .boolean("shadow", rule.shadow);
         if (const toml::node* n = keys.take("default_floating_size")) {
           const auto* table = n->as_table();
           if (table == nullptr) {
