@@ -267,9 +267,9 @@ namespace umbriel {
     const float cardOpacity = &card == m_dragCard ? config().appearance.dragOpacity : 1.0F;
     const float presentedOpacity = view->presentedOpacity() * cardOpacity;
 
-    const auto& appearance = config().appearance;
     const int borderWidth = view->decorationBorderWidth();
-    const int total = borderWidth + appearance.outerBorderWidth;
+    const int outerBorderWidth = view->decorationOuterBorderWidth();
+    const int total = borderWidth + outerBorderWidth;
     const bool decorated = total > 0 && !view->toplevel()->current.fullscreen && !view->maximizedToEdges();
     const int scaledRadius = static_cast<int>(std::lround(view->decorationCornerRadius() * z));
     const int outerRadius = decorated ? scaledRadius : 0;
@@ -277,7 +277,7 @@ namespace umbriel {
       return width > 0 ? std::max(1, static_cast<int>(std::lround(width * z))) : 0;
     };
     const int innerWidth = scaledWidth(borderWidth);
-    const int outerWidth = scaledWidth(appearance.outerBorderWidth);
+    const int outerWidth = scaledWidth(outerBorderWidth);
     const int surfaceRadius = nestedRadius(outerRadius, innerWidth + outerWidth);
     const bool borderVisible = decorated && innerWidth + outerWidth > 0;
     wlr_scene_node_set_enabled(&card.border->node, borderVisible);
@@ -1100,7 +1100,7 @@ namespace umbriel {
                 .innerColor = innerColor,
                 .outerColor = outerColor,
                 .innerWidth = card.view->decorationBorderWidth(),
-                .outerWidth = config().appearance.outerBorderWidth,
+                .outerWidth = card.view->decorationOuterBorderWidth(),
                 .cornerRadius = card.view->decorationCornerRadius(),
             }
         );

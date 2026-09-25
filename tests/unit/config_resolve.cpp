@@ -630,6 +630,7 @@ UMBRIEL_TEST(windowRuleDecorationOverridesMergePerField) {
   app.appIdRegex = std::regex(app.appIdPattern);
   app.borderWidth = 0;
   app.shadow = false;
+  app.outerBorderWidth = 3;
   config.windowRules.push_back(std::move(app));
 
   WindowRule title;
@@ -641,6 +642,7 @@ UMBRIEL_TEST(windowRuleDecorationOverridesMergePerField) {
 
   const auto both = umbriel::resolveWindowRules(config, "foot", "editor", std::nullopt, ContentType::None, {}, 0);
   CHECK(both.borderWidth && *both.borderWidth == 0);
+  CHECK(both.outerBorderWidth && *both.outerBorderWidth == 3);
   CHECK(both.cornerRadius && *both.cornerRadius == 0);
   CHECK(both.shadow && *both.shadow);
 

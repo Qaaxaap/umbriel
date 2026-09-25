@@ -43,10 +43,9 @@ namespace umbriel {
       return;
     }
 
-    const int outerWidth = config().appearance.outerBorderWidth;
     applyBorderGeometry(
-        m_border, makeBorderRing(contentWidth, contentHeight, m_cornerRadius, m_borderWidth, outerWidth), m_borderWidth,
-        outerWidth
+        m_border, makeBorderRing(contentWidth, contentHeight, m_cornerRadius, m_borderWidth, m_outerBorderWidth),
+        m_borderWidth, m_outerBorderWidth
     );
   }
 
@@ -72,9 +71,8 @@ namespace umbriel {
     if (m_border == nullptr) {
       return false;
     }
-    const BorderRing ring = makeBorderRing(
-        contentWidth, contentHeight, m_cornerRadius, m_borderWidth, config().appearance.outerBorderWidth
-    );
+    const BorderRing ring =
+        makeBorderRing(contentWidth, contentHeight, m_cornerRadius, m_borderWidth, m_outerBorderWidth);
     return m_border->width != ring.box.width || m_border->height != ring.box.height;
   }
 
@@ -104,7 +102,7 @@ namespace umbriel {
         .innerColor = innerColor,
         .outerColor = m_borderColors.outer,
         .innerWidth = m_borderWidth,
-        .outerWidth = config().appearance.outerBorderWidth,
+        .outerWidth = m_outerBorderWidth,
         .cornerRadius = m_cornerRadius,
     };
     captured.innerColor[3] *= opacity;
@@ -131,9 +129,14 @@ namespace umbriel {
     };
     const auto& appearance = config().appearance;
     const int borderWidth = rule.borderWidth.value_or(appearance.borderWidth);
+    const int outerBorderWidth = rule.outerBorderWidth.value_or(appearance.outerBorderWidth);
     const int cornerRadius = rule.cornerRadius.value_or(appearance.cornerRadius);
-    const bool changed = borderWidth != m_borderWidth || cornerRadius != m_cornerRadius || rule.shadow != m_ruleShadow;
+    const bool changed = borderWidth != m_borderWidth
+        || outerBorderWidth != m_outerBorderWidth
+        || cornerRadius != m_cornerRadius
+        || rule.shadow != m_ruleShadow;
     m_borderWidth = borderWidth;
+    m_outerBorderWidth = outerBorderWidth;
     m_cornerRadius = cornerRadius;
     m_ruleShadow = rule.shadow;
     m_shadow.setEnabled(rule.shadow);

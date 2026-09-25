@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Window rules carry their own frame, corner radius, and shadow, so a
+# Window rules carry their own frame, outer ring, corner radius, and shadow, so a
 # client-side-decorated application can be left bare while every other window
 # keeps the global decoration. The check reads the pixels just outside two
 # identical floating windows: the one whose rule sets border_width = 0 and
-# shadow = false shows the background where the other shows the frame and its
-# drop shadow.
+# shadow = false shows the background where the other shows the frame, the outer
+# ring its rule adds, and its drop shadow.
 set -euo pipefail
 
 readonly CLIENT="${UMBRIEL_FRACTIONAL_CLIENT:-./build-debug/tests/fractional-client}"
@@ -44,6 +44,7 @@ match.title = "^framed-window$"
 default_floating = true
 default_floating_size_px = { width = 400, height = 300 }
 default_position = { x = 620, y = 120, anchor = "top_left" }
+outer_border_width = 4
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
@@ -152,15 +153,24 @@ expect_content() {
 # squares them, which shows at the client surface's own corner pixel.
 expect_content "$BARE" 0 0 "bare window's corner"
 
-# shadow: it is offset two pixels down and blurs over ten, so six pixels below
-# each window separates a shadow from the plain background.
-expect_shadow "$FRAMED" 200 306 "framed window's shadow"
+# shadow: it is offset two pixels down and blurs over ten, so a few pixels past a
+# window's ring separate a shadow from the plain background: six below the bare
+# window, twelve below the framed one and its eight-pixel ring.
+expect_shadow "$FRAMED" 200 312 "framed window's shadow"
 expect_background "$BARE" 200 306 "bare window's shadow area"
 
 # border_width: the global frame is four pixels wide, so two pixels outside the
 # client edge are still inside it. The bare window draws nothing there.
 expect_background "$BARE" -2 150 "bare window's left edge"
 expect_frame "$FRAMED" -2 150 "framed window's left frame"
+
+# outer_border_width: the global outer ring is off, so six pixels outside the client edge lie past the global frame.
+# The framed window's rule adds a four-pixel outer ring there; the bare window still draws nothing.
+expect_background "$BARE" -6 150 "bare window's outer edge"
+if [[ $(hex_at "$FRAMED" -6 150) != FF0000 ]]; then
+  echo "framed window's outer ring: expected #FF0000, read #$(hex_at "$FRAMED" -6 150)"
+  exit 1
+fi
 
 # The override works in the other direction too: with the global switch off, a rule
 # that sets shadow = true still draws one, while a window without the rule stays
@@ -171,6 +181,6 @@ sed -i 's/^shadow = false$/shadow = true/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
 shot_settled
 expect_shadow "$BARE" 200 306 "shadow = true under a globally disabled shadow"
-expect_background "$FRAMED" 200 306 "window without the rule under the same global switch"
+expect_background "$FRAMED" 200 312 "window without the rule under the same global switch"
 
-echo "border_width = 0, corner_radius = 0, and shadow = false left one window bare while the other kept the global frame, and shadow = true drew a shadow where the global switch was off"
+echo "border_width = 0, corner_radius = 0, and shadow = false left one window bare while the other kept the global frame and drew its rule's outer ring, and shadow = true drew a shadow where the global switch was off"

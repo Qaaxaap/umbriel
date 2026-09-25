@@ -340,8 +340,10 @@ namespace umbriel {
     std::optional<std::array<float, 4>> borderColorFocused;
     std::optional<std::array<float, 4>> borderColorUnfocused;
     std::optional<std::array<float, 4>> borderColorOuter;
-    // Override [appearance] border_width, corner_radius, and shadow.enabled for windows this rule matches.
+    // Override [appearance] border_width, outer_border_width, corner_radius, and shadow.enabled for windows this rule
+    // matches.
     std::optional<int> borderWidth;
+    std::optional<int> outerBorderWidth;
     std::optional<int> cornerRadius;
     std::optional<bool> shadow;
 
@@ -389,6 +391,7 @@ namespace umbriel {
           && borderColorUnfocused == other.borderColorUnfocused
           && borderColorOuter == other.borderColorOuter
           && borderWidth == other.borderWidth
+          && outerBorderWidth == other.outerBorderWidth
           && cornerRadius == other.cornerRadius
           && shadow == other.shadow;
     }
@@ -427,6 +430,7 @@ namespace umbriel {
     std::optional<std::array<float, 4>> borderColorUnfocused;
     std::optional<std::array<float, 4>> borderColorOuter;
     std::optional<int> borderWidth;
+    std::optional<int> outerBorderWidth;
     std::optional<int> cornerRadius;
     std::optional<bool> shadow;
     bool operator==(const ResolvedWindowRule&) const = default;

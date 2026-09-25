@@ -38,10 +38,11 @@ namespace umbriel {
     void setBorderRawColor(const std::array<float, 4>& baseColor, float alpha);
     // [colors.border] with the last applied rule's overrides.
     [[nodiscard]] const Config::Colors::Border& borderColors() const { return m_borderColors; }
-    // [appearance] border_width and corner_radius with the last applied rule's overrides. The outer ring stays global.
+    // [appearance] border widths and corner_radius with the last applied rule's overrides.
     [[nodiscard]] int borderWidth() const { return m_borderWidth; }
+    [[nodiscard]] int outerBorderWidth() const { return m_outerBorderWidth; }
     [[nodiscard]] int cornerRadius() const { return m_cornerRadius; }
-    [[nodiscard]] int totalBorderWidth() const { return m_borderWidth + config().appearance.outerBorderWidth; }
+    [[nodiscard]] int totalBorderWidth() const { return m_borderWidth + m_outerBorderWidth; }
     // True when the drawn ring no longer matches the given content size, i.e. a
     // client commit changed geometry behind the layout's back.
     [[nodiscard]] bool borderGeometryStale(int contentWidth, int contentHeight) const;
@@ -93,6 +94,7 @@ namespace umbriel {
     wlr_scene_border* m_border = nullptr;
     Config::Colors::Border m_borderColors = config().colors.border;
     int m_borderWidth = config().appearance.borderWidth;
+    int m_outerBorderWidth = config().appearance.outerBorderWidth;
     int m_cornerRadius = config().appearance.cornerRadius;
     std::optional<bool> m_ruleShadow;
     SurfaceBlur m_blur;

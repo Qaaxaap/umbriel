@@ -2152,6 +2152,7 @@ UMBRIEL_TEST(windowRuleDecorationKeysAreRead) {
       "[[window_rule]]\n"
       "match.app_id = \"^csd-app$\"\n"
       "border_width = 0\n"
+      "outer_border_width = 6\n"
       "corner_radius = 0\n"
       "shadow = false\n"
   );
@@ -2167,6 +2168,7 @@ UMBRIEL_TEST(windowRuleDecorationKeysAreRead) {
   }
   const umbriel::WindowRule& rule = store.config().windowRules.front();
   CHECK(rule.borderWidth && *rule.borderWidth == 0);
+  CHECK(rule.outerBorderWidth && *rule.outerBorderWidth == 6);
   CHECK(rule.cornerRadius && *rule.cornerRadius == 0);
   CHECK(rule.shadow && !*rule.shadow);
   CHECK(store.diagnostics().empty());

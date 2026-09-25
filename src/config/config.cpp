@@ -2124,6 +2124,7 @@ namespace umbriel {
             .color("border_color_unfocused", rule.borderColorUnfocused)
             .color("border_color_outer", rule.borderColorOuter)
             .integer("border_width", 0, 100, rule.borderWidth)
+            .integer("outer_border_width", 0, 100, rule.outerBorderWidth)
             .integer("corner_radius", 0, 100, rule.cornerRadius)
             .boolean("shadow", rule.shadow);
         if (const toml::node* n = keys.take("default_floating_size")) {

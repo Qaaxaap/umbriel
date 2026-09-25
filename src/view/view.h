@@ -112,8 +112,9 @@ namespace umbriel {
     [[nodiscard]] bool shadowPooled() const { return m_decoration.shadowPooled(); }
     // Border colors after this window's rule overrides; overview cards draw with the same ones.
     [[nodiscard]] const Config::Colors::Border& borderColors() const { return m_decoration.borderColors(); }
-    // border_width and corner_radius after this window's rule overrides; overview cards draw with the same ones.
+    // Border widths and corner_radius after this window's rule overrides; overview cards draw with the same ones.
     [[nodiscard]] int decorationBorderWidth() const { return m_decoration.borderWidth(); }
+    [[nodiscard]] int decorationOuterBorderWidth() const { return m_decoration.outerBorderWidth(); }
     [[nodiscard]] int decorationCornerRadius() const { return m_decoration.cornerRadius(); }
     // Opacity multiplier the overview applies to windows it leaves on screen (pinned ones) while it opens and closes.
     void setOverviewOpacity(float opacity);

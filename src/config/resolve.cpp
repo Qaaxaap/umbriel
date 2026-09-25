@@ -329,6 +329,9 @@ namespace umbriel {
       if (rule.borderWidth) {
         resolved.borderWidth = rule.borderWidth;
       }
+      if (rule.outerBorderWidth) {
+        resolved.outerBorderWidth = rule.outerBorderWidth;
+      }
       if (rule.cornerRadius) {
         resolved.cornerRadius = rule.cornerRadius;
       }
