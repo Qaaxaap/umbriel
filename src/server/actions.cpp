@@ -1591,12 +1591,10 @@ namespace umbriel {
 
       // Gesture keeps the seat focus where it is without revealing its column: the restored scroll offset above is
       // what both strips must settle on.
-      if (seatFocus != nullptr && seatFocus->mapped()) {
-        server.focusView(seatFocus, FocusReason::Gesture);
-        maybeWarpCursorToWindow(server, seatFocus);
-      } else if (sourceWs->focusedView() != nullptr) {
-        server.focusView(sourceWs->focusedView(), FocusReason::Gesture);
-        maybeWarpCursorToWindow(server, sourceWs->focusedView());
+      View* seatTarget = seatFocus != nullptr && seatFocus->mapped() ? seatFocus : sourceWs->focusedView();
+      if (seatTarget != nullptr) {
+        server.focusView(seatTarget, FocusReason::Gesture);
+        finishWorkspaceTransfer(server, *seatTarget);
       }
 
       sourceWs->markArrange(true);
