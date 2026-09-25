@@ -161,6 +161,12 @@ namespace umbriel {
     ClickFinger,
   };
 
+  // Which buttons one-, two-, and three-finger taps produce.
+  enum class TapButtonMap : uint8_t {
+    LeftRightMiddle,
+    LeftMiddleRight,
+  };
+
   enum class WindowDragToggle : uint8_t {
     None,
     Floating,
@@ -801,6 +807,7 @@ namespace umbriel {
         std::optional<bool> disableWhileTyping;
         std::optional<bool> disableOnExternalMouse;
         std::optional<ClickMethod> clickMethod;
+        std::optional<TapButtonMap> tapButtonMap;
         bool operator==(const Touchpad&) const = default;
       } touchpad;
 
@@ -860,6 +867,7 @@ namespace umbriel {
         std::optional<double> sensitivity;
         std::optional<bool> disableWhileTyping;
         std::optional<ClickMethod> clickMethod;
+        std::optional<TapButtonMap> tapButtonMap;
         std::optional<uint32_t> scrollButton;
         std::optional<bool> scrollButtonLock;
         bool operator==(const Device&) const = default;

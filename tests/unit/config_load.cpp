@@ -2291,6 +2291,7 @@ scroll_factor = { horizontal = 0.8, vertical = 0.6 }
 disable_while_typing = true
 disable_on_external_mouse = true
 click_method = "button_areas"
+tap_button_map = "left_middle_right"
 
 [input.mouse]
 accel_profile = "custom 0.2 0.0 0.5 1.0 2.0"
@@ -2313,6 +2314,7 @@ accel_profile = "flat"
 sensitivity = -0.5
 disable_while_typing = false
 click_method = "clickfinger"
+tap_button_map = "left_right_middle"
 
 [[input.device]]
 name = "Acme Gaming Mouse"
@@ -2346,6 +2348,7 @@ scroll_button_lock = false
   CHECK(input.touchpad.disableWhileTyping == std::optional<bool>(true));
   CHECK(input.touchpad.disableOnExternalMouse == std::optional<bool>(true));
   CHECK(input.touchpad.clickMethod == std::optional(umbriel::ClickMethod::ButtonAreas));
+  CHECK(input.touchpad.tapButtonMap == std::optional(umbriel::TapButtonMap::LeftMiddleRight));
   CHECK_EQ(input.devices.size(), size_t{3});
 
   const auto* keyboard = input.findDevice("Acme Split Keyboard");
@@ -2369,6 +2372,7 @@ scroll_button_lock = false
     CHECK(touchpad->sensitivity == std::optional<double>(-0.5));
     CHECK(touchpad->disableWhileTyping == std::optional<bool>(false));
     CHECK(touchpad->clickMethod == std::optional(umbriel::ClickMethod::ClickFinger));
+    CHECK(touchpad->tapButtonMap == std::optional(umbriel::TapButtonMap::LeftRightMiddle));
   }
 
   const auto* mouse = input.findDevice("Acme Gaming Mouse");
@@ -2503,6 +2507,23 @@ click_method = "button-areas"
   CHECK(!store.config().input.touchpad.clickMethod.has_value());
   CHECK(containsDiagnostic(store, R"(invalid input.touchpad.click_method "button-areas")"));
   CHECK(!containsDiagnostic(store, "unknown key input.touchpad.click_method"));
+}
+
+UMBRIEL_TEST(invalidTapButtonMapIsRejectedAndStillClaimsTheKey) {
+  const TempConfig file;
+  file.write(R"(
+[input.touchpad]
+tap_button_map = "lmr"
+)");
+
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  const umbriel::ConfigReloadResult result = store.reload();
+
+  CHECK(result.success);
+  CHECK(!store.config().input.touchpad.tapButtonMap.has_value());
+  CHECK(containsDiagnostic(store, R"(invalid input.touchpad.tap_button_map "lmr")"));
+  CHECK(!containsDiagnostic(store, "unknown key input.touchpad.tap_button_map"));
 }
 
 UMBRIEL_TEST(scrollButtonRejectsEvdevCodesAndStillClaimsTheKey) {

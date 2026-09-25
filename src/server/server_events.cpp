@@ -221,6 +221,32 @@ namespace umbriel {
       }
     }
 
+    void applyTapButtonMap(
+        libinput_device* libinputDevice, const wlr_input_device* device, std::optional<TapButtonMap> configured,
+        std::string_view setting
+    ) {
+      if (!configured) {
+        if (libinput_device_config_tap_set_button_map(
+                libinputDevice, libinput_device_config_tap_get_default_button_map(libinputDevice)
+            )
+            != LIBINPUT_CONFIG_STATUS_SUCCESS) {
+          kLog.warn("input: failed to restore the default tap button map for '{}'", deviceName(device));
+        }
+        return;
+      }
+      enum libinput_config_tap_button_map requested = LIBINPUT_CONFIG_TAP_MAP_LRM;
+      switch (*configured) {
+      case TapButtonMap::LeftRightMiddle:
+        break;
+      case TapButtonMap::LeftMiddleRight:
+        requested = LIBINPUT_CONFIG_TAP_MAP_LMR;
+        break;
+      }
+      if (libinput_device_config_tap_set_button_map(libinputDevice, requested) != LIBINPUT_CONFIG_STATUS_SUCCESS) {
+        kLog.warn("input: failed to apply {} to '{}'", setting, deviceName(device));
+      }
+    }
+
     // libinput's on-button-down scrolling: while the configured button is held (or latched, with the lock), motion
     // turns into scroll events and the button itself stops clicking.
     void applyScrollButton(
@@ -423,6 +449,13 @@ namespace umbriel {
               deviceName(device)
           );
         }
+        const bool hasTapMapOverride = override != nullptr && override->tapButtonMap.has_value();
+        const std::optional<TapButtonMap>& tapButtonMap =
+            hasTapMapOverride ? override->tapButtonMap : input.touchpad.tapButtonMap;
+        applyTapButtonMap(
+            libinputDevice, device, tapButtonMap,
+            hasTapMapOverride ? "input.device.tap_button_map" : "input.touchpad.tap_button_map"
+        );
       }
 
       const bool hasClickOverride = override != nullptr && override->clickMethod.has_value();

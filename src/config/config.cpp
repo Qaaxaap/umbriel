@@ -528,6 +528,30 @@ namespace umbriel {
       return std::nullopt;
     }
 
+    std::optional<TapButtonMap> readTapButtonMap(Section& section, std::string_view context) {
+      const toml::node* node = section.take("tap_button_map");
+      if (node == nullptr) {
+        return std::nullopt;
+      }
+      const auto* value = node->as_string();
+      if (value == nullptr) {
+        warnAt(node->source(), "{}.tap_button_map must be a string", context);
+        return std::nullopt;
+      }
+      const std::string map = lowercase(value->get());
+      if (map == "left_right_middle") {
+        return TapButtonMap::LeftRightMiddle;
+      }
+      if (map == "left_middle_right") {
+        return TapButtonMap::LeftMiddleRight;
+      }
+      warnAt(
+          node->source(), R"(invalid {}.tap_button_map "{}" (expected "left_right_middle" or "left_middle_right"))",
+          context, value->get()
+      );
+      return std::nullopt;
+    }
+
     std::optional<uint32_t> readScrollButton(Section& section, std::string_view context) {
       const toml::node* node = section.take("scroll_button");
       if (node == nullptr) {
@@ -1553,6 +1577,7 @@ namespace umbriel {
             .boolean("scroll_button_lock", device.scrollButtonLock);
         device.accelProfile = readAccelProfile(keys, "accel_profile", "input.device");
         device.clickMethod = readClickMethod(keys, "input.device");
+        device.tapButtonMap = readTapButtonMap(keys, "input.device");
         device.scrollButton = readScrollButton(keys, "input.device");
 
         if (!validName) {
@@ -1627,6 +1652,7 @@ namespace umbriel {
           in.touchpad.scrollFactor = readScrollFactor(t);
           in.touchpad.accelProfile = readAccelProfile(t, "accel_profile", "input.touchpad");
           in.touchpad.clickMethod = readClickMethod(t, "input.touchpad");
+          in.touchpad.tapButtonMap = readTapButtonMap(t, "input.touchpad");
         });
         s.sub("mouse", [&](Section& m) {
           m.boolean("natural_scroll", in.mouse.naturalScroll)
