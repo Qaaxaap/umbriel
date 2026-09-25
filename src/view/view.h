@@ -110,6 +110,8 @@ namespace umbriel {
     // than under the view's own frame. Overview cards mirror it so they match the window they swap with.
     [[nodiscard]] const wlr_scene_shadow* shadowNode() const { return m_decoration.shadowNode(); }
     [[nodiscard]] bool shadowPooled() const { return m_decoration.shadowPooled(); }
+    // Border colors after this window's rule overrides; overview cards draw with the same ones.
+    [[nodiscard]] const Config::Colors::Border& borderColors() const { return m_decoration.borderColors(); }
     // Opacity multiplier the overview applies to windows it leaves on screen (pinned ones) while it opens and closes.
     void setOverviewOpacity(float opacity);
     [[nodiscard]] wlr_scene_tree* homeTree() const;

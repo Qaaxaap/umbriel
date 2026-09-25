@@ -285,7 +285,7 @@ namespace umbriel {
           card.border, makeBorderRing(contentW, contentH, outerRadius, innerWidth, outerWidth), innerWidth, outerWidth
       );
       const std::array<float, 4> innerColor = tint(cardBorderColor(card, liveTarget), presentedOpacity);
-      const std::array<float, 4> outerColor = tint(config().colors.border.outer, presentedOpacity);
+      const std::array<float, 4> outerColor = tint(view->borderColors().outer, presentedOpacity);
       wlr_scene_border_set_colors(card.border, innerColor.data(), outerColor.data());
     }
 
@@ -559,7 +559,7 @@ namespace umbriel {
   }
 
   std::array<float, 4> Overview::cardBorderColor(const Card& card, const View* liveTarget) const {
-    const auto& border = config().colors.border;
+    const auto& border = card.view != nullptr ? card.view->borderColors() : config().colors.border;
     const Workspace* workspace = card.view != nullptr ? card.view->workspace() : nullptr;
     if (workspace == nullptr || workspace->focusedView() != card.view || &card == m_dragCard) {
       return border.unfocused;
@@ -1014,8 +1014,8 @@ namespace umbriel {
     if (card->tree == nullptr) {
       return nullptr;
     }
-    const std::array<float, 4> innerColor = tint(config().colors.border.unfocused, 1.0);
-    const std::array<float, 4> outerColor = tint(config().colors.border.outer, 1.0);
+    const std::array<float, 4> innerColor = tint(view->borderColors().unfocused, 1.0);
+    const std::array<float, 4> outerColor = tint(view->borderColors().outer, 1.0);
     card->border = wlr_scene_border_create(card->tree, innerColor.data(), outerColor.data());
     if (card->border == nullptr) {
       wlr_scene_node_destroy(&card->tree->node);
@@ -1089,7 +1089,7 @@ namespace umbriel {
             &copy->node, card.tree->node.x + card.border->node.x, card.tree->node.y + card.border->node.y
         );
         std::array<float, 4> innerColor = cardBorderColor(card, liveTargetView());
-        std::array<float, 4> outerColor = config().colors.border.outer;
+        std::array<float, 4> outerColor = card.view->borderColors().outer;
         const float presentedOpacity = card.view->presentedOpacity();
         innerColor[3] *= presentedOpacity;
         outerColor[3] *= presentedOpacity;

@@ -2067,9 +2067,8 @@ namespace umbriel {
       setFadeAlpha(m_fadeAlpha);
     }
 
-    const auto& targetBase = m_inScratchpad
-        ? (focused ? config().colors.border.scratchpadFocused : config().colors.border.scratchpadUnfocused)
-        : (focused ? config().colors.border.focused : config().colors.border.unfocused);
+    const Config::Colors::Border& colors = m_decoration.borderColors();
+    const std::array<float, 4>& targetBase = focused ? colors.focused : colors.unfocused;
 
     // A window without a drawn border has nothing to fade, and an invisible transition would still keep frames coming.
     const auto& border = animation.border;
@@ -2078,7 +2077,7 @@ namespace umbriel {
       scheduleFrame();
     } else {
       m_borderColorAnim.snap(targetBase);
-      m_decoration.setBorderColor(focused, m_inScratchpad, effectiveOpacity());
+      m_decoration.setBorderColor(focused, effectiveOpacity());
     }
 
     if (focusChanged && m_mapped) {
@@ -4599,6 +4598,18 @@ namespace umbriel {
     const ResolvedWindowRule& rule = resolved != nullptr ? *resolved : resolvedRules();
     m_appliedRuleState = ruleState();
     m_decoration.applyRule(rule);
+    const Config::Colors::Border& colors = m_decoration.borderColors();
+    const std::array<float, 4>& targetBorder = m_borderFocusedState ? colors.focused : colors.unfocused;
+    const auto& borderAnimation = config().animation.border;
+    if (m_mapped && m_borderColorAnim.animating() && borderAnimation.enabled) {
+      if (m_borderColorAnim.target() != targetBorder) {
+        m_borderColorAnim.retarget(targetBorder, borderAnimation.durationMs, borderAnimation.curve);
+        scheduleFrame();
+      }
+    } else {
+      m_borderColorAnim.snap(targetBorder);
+      m_decoration.setBorderColor(m_borderFocusedState, effectiveOpacity());
+    }
     const float newOpacity = rule.opacity ? static_cast<float>(*rule.opacity) : 1.0F;
     if (newOpacity != m_ruleOpacity) {
       m_ruleOpacity = newOpacity;

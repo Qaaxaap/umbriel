@@ -178,6 +178,12 @@ default_position = { x = 0, y = 0, anchor = "bottom_right" }
 default_focused = false
 default_pinned = true
 
+# Give scratchpad windows their own border colors.
+# [[window_rule]]
+# match.is_scratchpad = true
+# border_color_focused = "#E5C07BFF"
+# border_color_unfocused = "#5C4A2AFF"
+
 # ==============================================================================
 # Layer rules
 # https://docs.noctalia.dev/umbriel/layer-rules/
