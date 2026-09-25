@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # A workspace step stops at the ends of the inventory unless the output enables
 # cyclic_workspaces, in which case it wraps to the other end. The switch and the
-# two move variants have to agree: stepping back on the first workspace would
+# move variants have to agree: stepping back on the first workspace would
 # otherwise wrap the workspace while leaving moved content behind.
 set -euo pipefail
 
@@ -82,6 +82,12 @@ FOCUS_ID=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "cyclic-a")
 "$UMBRIEL" msg window-move-to-workspace-previous > /dev/null
 expect_window_at cyclic-a "HEADLESS-1:3" "window-move-to-workspace-previous"
 
+# At the column edge, the composite vertical move steps workspaces with the same wrap.
+"$UMBRIEL" msg window-move-or-workspace-down > /dev/null
+expect_window_at cyclic-a "HEADLESS-1:1" "window-move-or-workspace-down on the last workspace"
+"$UMBRIEL" msg window-move-or-workspace-up > /dev/null
+expect_window_at cyclic-a "HEADLESS-1:3" "window-move-or-workspace-up on the first workspace"
+
 # Without the key the step stops at the ends.
 sed -i 's/^cyclic_workspaces = true$/cyclic_workspaces = false/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
@@ -90,4 +96,4 @@ expect_workspace 1 "workspace-switch back to the first workspace"
 "$UMBRIEL" msg workspace-previous > /dev/null
 expect_workspace 1 "workspace-previous without the key"
 
-echo "workspace steps wrapped at both ends with the key, for the switch, the column move and the window move, and stopped without it"
+echo "workspace steps wrapped at both ends with the key, for the switch and the column, window, and edge moves, and stopped without it"

@@ -82,7 +82,8 @@ cyclic_workspaces = true
 
 This applies to `workspace-next`/`previous`,
 `window-move-to-workspace-next`/`previous`,
-`window-move-to-workspace-silent-next`/`previous`, and
+`window-move-to-workspace-silent-next`/`previous`,
+`window-move-or-workspace-up`/`down` at the column edge, and
 `column-move-to-workspace-next`/`previous`.
 
 On a dynamic output, the trailing empty workspace is the last one. Stepping
