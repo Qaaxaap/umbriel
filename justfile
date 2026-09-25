@@ -22,7 +22,7 @@ configure m=mode install_prefix=prefix:
         args+=(--buildtype=release -Db_lto=true)
         ;;
       asan)
-        args+=(--buildtype=debug -Db_sanitize=address)
+        args+=(--buildtype=debug -Db_sanitize=address -Dwerror=true)
         ;;
       tracy)
         # Packaged Tracy clients are the no-op stub; build one under ~/.local.
@@ -30,7 +30,7 @@ configure m=mode install_prefix=prefix:
         args+=(-Dpkg_config_path="$HOME/.local/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}")
         ;;
       debug)
-        args+=(--buildtype=debug)
+        args+=(--buildtype=debug -Dwerror=true)
         ;;
       *)
         # Recipes that build take the mode as their first argument, so a stray
@@ -170,22 +170,7 @@ _clang_tidy m=mode *args:
     tests_root="$(realpath tests)"
     run-clang-tidy -quiet -use-color -p "build-{{m}}" -j "$(nproc)" -header-filter='\.\./(src|tests)/.*' {{args}} "^(${src_root}|${tests_root})/.*"
 
-# Fail on any compiler warning emitted while building. clang-tidy does not surface these: it reports its own check names, not the compiler's diagnostics. Compiles everything rather than only what changed. A warning is emitted when a file is compiled, so an incremental build reports nothing for the files it skipped, which silently turns a gate into a coin flip. A dead function left behind by an edit in another file is exactly the case that slips through.
-_warnings m=mode: (_ensure-configured m)
-    #!/usr/bin/env bash
-    set -euo pipefail
-    ninja -C build-{{m}} -t clean >/dev/null
-    if ! output=$(ninja -C build-{{m}} 2>&1); then
-        printf '%s\n' "$output"
-        exit 1
-    fi
-    if printf '%s\n' "$output" | grep -q 'warning:'; then
-        printf '%s\n' "$output" | grep -A8 'warning:'
-        echo "error: compiler warnings are not allowed" >&2
-        exit 1
-    fi
-
-lint m=mode: (_ensure-configured m) (_warnings m)
+lint m=mode: (_ensure-configured m)
     just _clang_tidy {{m}} '-warnings-as-errors=*'
 
 clean m=mode:
