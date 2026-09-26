@@ -2311,6 +2311,7 @@ repeat_rate = 25
 [input.touchpad]
 tap = true
 natural_scroll = true
+left_handed = true
 accel_profile = "adaptive"
 sensitivity = 0.1
 scroll_factor = { horizontal = 0.8, vertical = 0.6 }
@@ -2320,6 +2321,7 @@ click_method = "button_areas"
 tap_button_map = "left_middle_right"
 
 [input.mouse]
+left_handed = true
 accel_profile = "custom 0.2 0.0 0.5 1.0 2.0"
 sensitivity = 0.25
 scroll_button = "MouseForward"
@@ -2336,6 +2338,7 @@ repeat_delay = 250
 name = "Acme Precision Touchpad"
 tap = false
 natural_scroll = false
+left_handed = false
 accel_profile = "flat"
 sensitivity = -0.5
 disable_while_typing = false
@@ -2363,6 +2366,7 @@ scroll_button_lock = false
   CHECK_EQ(input.mouse.sensitivity, 0.25);
   CHECK(input.mouse.scrollButton == std::optional<uint32_t>(BTN_EXTRA));
   CHECK(input.mouse.scrollButtonLock == std::optional<bool>(true));
+  CHECK(input.mouse.leftHanded == std::optional<bool>(true));
   CHECK(input.touchpad.accelProfile.has_value());
   if (input.touchpad.accelProfile.has_value()) {
     CHECK(input.touchpad.accelProfile->kind == umbriel::AccelProfile::Kind::Adaptive);
@@ -2375,6 +2379,7 @@ scroll_button_lock = false
   CHECK(input.touchpad.disableOnExternalMouse == std::optional<bool>(true));
   CHECK(input.touchpad.clickMethod == std::optional(umbriel::ClickMethod::ButtonAreas));
   CHECK(input.touchpad.tapButtonMap == std::optional(umbriel::TapButtonMap::LeftMiddleRight));
+  CHECK(input.touchpad.leftHanded == std::optional<bool>(true));
   CHECK_EQ(input.devices.size(), size_t{3});
 
   const auto* keyboard = input.findDevice("Acme Split Keyboard");
@@ -2391,6 +2396,7 @@ scroll_button_lock = false
   if (touchpad != nullptr) {
     CHECK(touchpad->tap == std::optional<bool>(false));
     CHECK(touchpad->naturalScroll == std::optional<bool>(false));
+    CHECK(touchpad->leftHanded == std::optional<bool>(false));
     CHECK(touchpad->accelProfile.has_value());
     if (touchpad->accelProfile.has_value()) {
       CHECK(touchpad->accelProfile->kind == umbriel::AccelProfile::Kind::Flat);
@@ -2410,6 +2416,7 @@ scroll_button_lock = false
     CHECK(!mouse->clickMethod.has_value());
     CHECK(mouse->scrollButton == std::optional<uint32_t>(BTN_SIDE));
     CHECK(mouse->scrollButtonLock == std::optional<bool>(false));
+    CHECK(!mouse->leftHanded.has_value());
   }
 
   CHECK(input.findDevice("acme split keyboard") == nullptr);
