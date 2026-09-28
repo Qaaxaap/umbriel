@@ -8,6 +8,7 @@ extern "C" {
 #include "config/config.h"
 #include "core/log.h"
 #include "input/cursor.h"
+#include "input/event_time.h"
 #include "input/gesture_physics.h"
 #include "input/gestures.h"
 #include "input/seat.h"
@@ -27,7 +28,6 @@ extern "C" {
 #include "view/view.h"
 // clang-format off
 #include <algorithm>
-#include <chrono>
 #include <cmath>
 #include <limits>
 #include <linux/input-event-codes.h>
@@ -1667,11 +1667,7 @@ namespace umbriel {
     m_server->cursor()->resetWheelAccumulation();
     // A close releases any navigation mid-gesture. Input events carry monotonic milliseconds, so the release sample
     // shares their clock and bleeds the speed of fingers that came to rest before the close.
-    const auto now = std::chrono::steady_clock::now().time_since_epoch();
-    endNavigation(
-        false, static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(now).count()),
-        m_navigationSource
-    );
+    endNavigation(false, monotonicMsec(), m_navigationSource);
     if (m_dragCard != nullptr) {
       endDrag(false);
     }

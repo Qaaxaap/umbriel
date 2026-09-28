@@ -1,6 +1,7 @@
 #include "input/gestures.h"
 
 #include "input/cursor.h"
+#include "input/event_time.h"
 #include "input/gesture_physics.h"
 #include "input/seat.h"
 #include "layout/scrolling.h"
@@ -10,7 +11,6 @@
 #include "view/view.h"
 // clang-format off
 #include <algorithm>
-#include <chrono>
 #include <cmath>
 #include "wlr.h"
 // clang-format on
@@ -22,13 +22,6 @@ namespace umbriel {
     // Finger travel for a full overview open or close. One workspace of the three-finger switch travels the same
     // distance, so the hand reads one gesture distance on either side of the overview.
     constexpr double kOverviewDistancePx = 300.0;
-
-    // Monotonic milliseconds, on the same clock the input path timestamps gesture events with. The overview taking
-    // over a swipe needs a release sample and has no event to read one from.
-    uint32_t nowMsec() {
-      const auto now = std::chrono::steady_clock::now().time_since_epoch();
-      return static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(now).count());
-    }
 
     int touchpadGestureDirection(wlr_pointer* pointer) {
       if (pointer == nullptr || !wlr_input_device_is_libinput(&pointer->base)) {
@@ -155,7 +148,7 @@ namespace umbriel {
     // Read the release before clearing the state: the filmstrip picks the swipe up from where the fingers left it, and
     // the projection is what decides which row that is.
     const GesturePhysics::StepRelease settle =
-        base != nullptr ? switchSettle(nowMsec()) : GesturePhysics::StepRelease{};
+        base != nullptr ? switchSettle(monotonicMsec()) : GesturePhysics::StepRelease{};
     m_switchGroup = nullptr;
     m_output = nullptr;
     m_state = State::Idle;
