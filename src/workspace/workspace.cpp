@@ -2443,10 +2443,13 @@ namespace umbriel {
     if (extent <= 0) {
       return false;
     }
-    // A settle still running is heading for a whole step, so where it is on screen minus that step is where it sits
-    // relative to the workspace that is now active. A gesture that starts now carries on from there rather than
-    // snapping the slide to the end of the animation first.
-    const double start = m_slide.base != nullptr ? m_slideAnim.current() - m_slideAnim.target() : 0.0;
+    // A settle still running between neighbours is heading for a whole step, so where it is on screen minus that step
+    // is where it sits relative to the workspace that is now active. A gesture that starts now carries on from there
+    // rather than snapping the slide to the end of the animation first. A jump across several workspaces has a
+    // non-neighbour on screen that the gesture cannot show, so that one snaps.
+    const bool carry = m_slide.base != nullptr
+        && std::max(m_slide.base->index(), m_active->index()) - std::min(m_slide.base->index(), m_active->index()) <= 1;
+    const double start = carry ? m_slideAnim.current() - m_slideAnim.target() : 0.0;
     slideFinish();
     m_slide.base = m_active;
     m_slide.extent = extent;
