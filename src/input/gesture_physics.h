@@ -10,9 +10,8 @@ namespace umbriel {
   // Physics shared by the touchpad gestures that settle on a step: the three-finger workspace switch, the four-finger
   // overview open and close, and the filmstrip inside the overview. A gesture accumulates raw finger travel and, on
   // release, projects where that travel would coast to a stop under SwipeTracker's deceleration before rounding the
-  // projection onto the nearest step. Distance and release speed therefore decide the landing together instead of
-  // being weighed against separate thresholds, so a quick flick carries as far as it looks like it should and a slow
-  // drag that stops before letting go falls back where it started.
+  // projection onto the nearest step. Distance and release speed decide the landing together, so a quick flick
+  // carries as far as it looks like it should and a slow drag that stops before letting go falls back where it started.
   class GesturePhysics {
   public:
     // Travel in either direction before a gesture commits to one axis. The same number GNOME Shell and niri use.

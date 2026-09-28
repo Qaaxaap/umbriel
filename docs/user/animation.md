@@ -88,9 +88,10 @@ effect on that event.
 shrinks toward it, while both fade.
 
 `animation.overview.workspace_curve` controls filmstrip movement after wheel,
-keyboard, and touchpad navigation. A released gesture keeps the speed the fingers
-had when the curve is a spring, for the filmstrip and for `[animation.workspaces]`
-alike; any other curve starts from rest.
+keyboard, and touchpad navigation. A released touchpad gesture keeps the speed
+the fingers had when its curve is a spring: `[animation.workspaces]` for the
+three-finger switch, `[animation.overview]` for the four-finger open and close,
+and `workspace_curve` for the filmstrip. Any other curve starts from rest.
 
 Scratchpad `dim` and `blur` remain active without a fade when animation is
 disabled. `scale`, `maximize`, and `fullscreen` set the presentation applied

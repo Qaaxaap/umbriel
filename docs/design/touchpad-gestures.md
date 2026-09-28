@@ -4,8 +4,7 @@ Every touchpad gesture that settles on a step runs the same physics: the
 three-finger workspace switch, the four-finger overview open and close, and the
 filmstrip inside the overview. `GesturePhysics` in `src/input/gesture_physics.h`
 holds it, and each gesture feeds it a `SwipeTracker`. The strip scroll and the
-overview both reuse the tracker's projection, so one model covers what used to be
-a hand-rolled accumulator per gesture.
+overview reuse the same tracker projection.
 
 ## Position
 
@@ -55,6 +54,11 @@ at instead of stopping dead and starting over from rest.
 `AnimatedValue::finishSpringTail` ends the spring once it can no longer move a
 pixel.
 
-Callers that are not a gesture — keybindings, IPC actions, a workspace
-activation taking over an in-flight switch — pass zero velocity and get the same
-spring from rest.
+Callers that are not a gesture (keybindings, IPC actions, a workspace activation
+taking over an in-flight switch) pass zero velocity and get the same spring from
+rest.
+
+A three-finger swipe that starts while a switch between neighbouring workspaces
+is still settling continues from the position on screen. A settle that jumps
+across several workspaces snaps to its end first, because the gesture can only
+show the neighbours of the active workspace.
