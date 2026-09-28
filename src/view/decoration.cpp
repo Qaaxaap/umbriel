@@ -4,10 +4,6 @@
 #include "scene/border_rect.h"
 #include "scene/color.h"
 
-extern "C" {
-#include <umbrielfx/render/animation.h>
-}
-
 // clang-format off
 #include "wlr.h"
 // clang-format on
@@ -43,24 +39,18 @@ namespace umbriel {
       return;
     }
 
-    const auto& appearance = config().appearance;
     applyBorderGeometry(
         m_border,
-        makeBorderRing(
-            contentWidth, contentHeight, appearance.cornerRadius, appearance.borderWidth, appearance.outerBorderWidth
-        ),
-        appearance.borderWidth, appearance.outerBorderWidth
+        makeBorderRing(contentWidth, contentHeight, m_cornerRadius, m_borderWidth, m_outerBorderWidth, m_borderPadding),
+        m_borderWidth, m_outerBorderWidth
     );
   }
 
-  void ViewDecoration::setBorderColor(bool focused, bool scratchpad, float alpha) {
+  void ViewDecoration::setBorderColor(bool focused, float alpha) {
     if (m_borderTree == nullptr) {
       return;
     }
-    const auto& baseColor = scratchpad
-        ? (focused ? config().colors.border.scratchpadFocused : config().colors.border.scratchpadUnfocused)
-        : (focused ? config().colors.border.focused : config().colors.border.unfocused);
-    setBorderRawColor(baseColor, alpha);
+    setBorderRawColor(focused ? m_borderColors.focused : m_borderColors.unfocused, alpha);
   }
 
   void ViewDecoration::setBorderRawColor(const std::array<float, 4>& baseColor, float alpha) {
@@ -70,7 +60,7 @@ namespace umbriel {
     float innerColor[4];
     float outerColor[4];
     premultiplied(innerColor, baseColor, alpha);
-    premultiplied(outerColor, config().colors.border.outer, alpha);
+    premultiplied(outerColor, m_borderColors.outer, alpha);
     wlr_scene_border_set_colors(m_border, innerColor, outerColor);
   }
 
@@ -78,10 +68,8 @@ namespace umbriel {
     if (m_border == nullptr) {
       return false;
     }
-    const auto& appearance = config().appearance;
-    const BorderRing ring = makeBorderRing(
-        contentWidth, contentHeight, appearance.cornerRadius, appearance.borderWidth, appearance.outerBorderWidth
-    );
+    const BorderRing ring =
+        makeBorderRing(contentWidth, contentHeight, m_cornerRadius, m_borderWidth, m_outerBorderWidth, m_borderPadding);
     return m_border->width != ring.box.width || m_border->height != ring.box.height;
   }
 
@@ -91,29 +79,38 @@ namespace umbriel {
     if (!bordersVisible() || m_border == nullptr) {
       return;
     }
-
-    wlr_scene_border* copy = wlr_scene_border_create(snapshot, m_border->inner_color, m_border->outer_color);
-    if (copy == nullptr) {
-      return;
-    }
-    wlr_scene_border_set_geometry(
-        copy, m_border->width, m_border->height, m_border->inner_width, m_border->outer_width, m_border->clipped_region,
-        m_border->seam_corners, m_border->outer_corners
-    );
-    wlr_scene_node_set_position(
-        &copy->node, m_borderTree->node.x + m_border->node.x, m_borderTree->node.y + m_border->node.y
-    );
-    wlr_scene_node_copy_animations_for_snapshot(&copy->node, &m_borderTree->node);
     // Straight colours at the opacity the ring is drawn with right now, so the fade starts from what is on screen
     // and stays in step with the content buffers, which keep their current opacity as their base.
-    BorderSnapshot captured{.node = copy, .innerColor = innerColor, .outerColor = config().colors.border.outer};
-    captured.innerColor[3] *= opacity;
-    captured.outerColor[3] *= opacity;
-    out.push_back(captured);
+    snapshotBorder(
+        snapshot, *m_border, m_borderTree->node.x + m_border->node.x, m_borderTree->node.y + m_border->node.y,
+        &m_borderTree->node,
+        {
+            .innerColor = innerColor,
+            .outerColor = m_borderColors.outer,
+            .innerWidth = m_borderWidth,
+            .outerWidth = m_outerBorderWidth,
+            .cornerRadius = m_cornerRadius,
+            .padding = m_borderPadding,
+        },
+        opacity, out
+    );
   }
 
-  // Blur
-  void ViewDecoration::applyRule(const ResolvedWindowRule& rule) {
+  bool ViewDecoration::setBorderPadding(int padding) {
+    if (padding == m_borderPadding) {
+      return false;
+    }
+    m_borderPadding = padding;
+    return true;
+  }
+
+  bool ViewDecoration::applyRule(const ResolvedWindowRule& rule) {
+    const auto& border = config().colors.border;
+    m_borderColors = {
+        .focused = rule.borderColorFocused.value_or(border.focused),
+        .unfocused = rule.borderColorUnfocused.value_or(border.unfocused),
+        .outer = rule.borderColorOuter.value_or(border.outer),
+    };
     m_blurOptions = SurfaceBlurOptions{
         .ignoreAlpha = static_cast<float>(rule.blurIgnoreAlpha.value_or(0.0)),
         .enabled = rule.blur.value_or(false),
@@ -124,8 +121,23 @@ namespace umbriel {
         .enabled = rule.blurPopups.value_or(false),
         .optimized = rule.blurOptimized,
     };
+    const auto& appearance = config().appearance;
+    const int borderWidth = rule.borderWidth.value_or(appearance.borderWidth);
+    const int outerBorderWidth = rule.outerBorderWidth.value_or(appearance.outerBorderWidth);
+    const int cornerRadius = rule.cornerRadius.value_or(appearance.cornerRadius);
+    const bool changed = borderWidth != m_borderWidth
+        || outerBorderWidth != m_outerBorderWidth
+        || cornerRadius != m_cornerRadius
+        || rule.shadow != m_ruleShadow;
+    m_borderWidth = borderWidth;
+    m_outerBorderWidth = outerBorderWidth;
+    m_cornerRadius = cornerRadius;
+    m_ruleShadow = rule.shadow;
+    m_shadow.setEnabled(rule.shadow);
+    return changed;
   }
 
+  // Blur
   void ViewDecoration::updateBlur(
       wlr_scene_tree* tree, wlr_surface* surface, const wlr_box& nodeBox, const wlr_box& geometry, int radius,
       const wlr_box* clip, float surfaceOpacity, float blurAlpha

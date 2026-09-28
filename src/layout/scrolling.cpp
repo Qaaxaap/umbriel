@@ -588,10 +588,23 @@ namespace umbriel {
     if (columnIndex < 0 || columnIndex >= static_cast<int>(m_columns.size()) || viewportPrimary <= 0) {
       return false;
     }
-    const double target = static_cast<double>(columnX(columnIndex, viewportPrimary))
-        - (viewportPrimary - columnWidth(columnIndex, viewportPrimary)) / 2.0;
-    setScroll(target, true);
+    setScroll(centeredScroll(columnIndex, viewportPrimary), true);
     return true;
+  }
+
+  double ScrollingLayout::centeredScroll(int columnIndex, int viewportPrimary) const {
+    return static_cast<double>(columnX(columnIndex, viewportPrimary))
+        - (viewportPrimary - columnWidth(columnIndex, viewportPrimary)) / 2.0;
+  }
+
+  void ScrollingLayout::clampScroll(int viewportPrimary) {
+    double low = 0.0;
+    auto high = static_cast<double>(maxScroll(viewportPrimary));
+    if (m_centeredRest && !m_columns.empty() && viewportPrimary > 0) {
+      low = std::min(low, centeredScroll(0, viewportPrimary));
+      high = std::max(high, centeredScroll(static_cast<int>(m_columns.size()) - 1, viewportPrimary));
+    }
+    m_scroll = std::clamp(m_scroll, low, high);
   }
 
   void ScrollingLayout::reconcileFocusedColumn(int columnIndex, int viewportPrimary) {

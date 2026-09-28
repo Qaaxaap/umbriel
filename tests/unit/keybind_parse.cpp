@@ -385,6 +385,12 @@ UMBRIEL_TEST(parsesArgumentFreeNewActions) {
   CHECK(parseAction("window-move-to-workspace-previous", bind));
   CHECK(bind.action == KeybindAction::WindowMoveToWorkspacePrevious);
 
+  CHECK(parseAction("window-move-to-workspace-silent-next", bind));
+  CHECK(bind.action == KeybindAction::WindowMoveToWorkspaceSilentNext);
+
+  CHECK(parseAction("window-move-to-workspace-silent-previous", bind));
+  CHECK(bind.action == KeybindAction::WindowMoveToWorkspaceSilentPrevious);
+
   CHECK(parseAction("column-move-to-workspace-next", bind));
   CHECK(bind.action == KeybindAction::ColumnMoveToWorkspaceNext);
 
@@ -482,6 +488,14 @@ UMBRIEL_TEST(parsesWorkspaceSelectors) {
   CHECK(positionValue != nullptr && positionValue->value == 2);
   CHECK(position != nullptr && position->output == "HDMI-A-1");
 
+  CHECK(parseAction("window-move-to-workspace-silent:2/HDMI-A-1", bind));
+  CHECK(bind.action == KeybindAction::WindowMoveToWorkspaceSilent);
+  position = selector(bind);
+  positionValue = position != nullptr ? std::get_if<umbriel::WorkspaceIndex>(&position->reference) : nullptr;
+  CHECK(positionValue != nullptr);
+  CHECK(positionValue != nullptr && positionValue->value == 2);
+  CHECK(position != nullptr && position->output == "HDMI-A-1");
+
   CHECK(parseAction("column-move-to-workspace:\"2\"/DP-1", bind));
   CHECK(bind.action == KeybindAction::ColumnMoveToWorkspace);
   named = selector(bind);
@@ -528,6 +542,25 @@ UMBRIEL_TEST(parsesOptionalOutputActions) {
   CHECK(bind.action == KeybindAction::DpmsOn);
   CHECK(parseAction("dpms-on:eDP-1", bind));
   CHECK_EQ(outputOf(bind), std::string{"eDP-1"});
+
+  CHECK(parseAction("screencast-set-output", bind));
+  CHECK(bind.action == KeybindAction::ScreenCastSetOutput);
+  CHECK(outputOf(bind).empty());
+  CHECK(parseAction("screencast-set-output:DP-1", bind));
+  CHECK_EQ(outputOf(bind), std::string{"DP-1"});
+
+  CHECK(parseAction("output-disable:eDP-1", bind));
+  CHECK(bind.action == KeybindAction::OutputDisable);
+  CHECK_EQ(outputOf(bind), std::string{"eDP-1"});
+  CHECK(parseAction("output-enable:DP-1", bind));
+  CHECK(bind.action == KeybindAction::OutputEnable);
+  CHECK_EQ(outputOf(bind), std::string{"DP-1"});
+  CHECK(parseAction("output-toggle:HDMI-A-1", bind));
+  CHECK(bind.action == KeybindAction::OutputToggle);
+  CHECK_EQ(outputOf(bind), std::string{"HDMI-A-1"});
+  CHECK(!parseAction("output-disable", bind));
+  CHECK(!parseAction("output-enable:", bind));
+  CHECK(!parseAction("output-toggle", bind));
 }
 
 UMBRIEL_TEST(parsesOptionalScratchpadActions) {
@@ -566,6 +599,22 @@ UMBRIEL_TEST(parsesOptionalScratchpadActions) {
 
 UMBRIEL_TEST(parsesWindowIdActions) {
   Keybind bind;
+  CHECK(parseAction("screencast-clear", bind));
+  CHECK(bind.action == KeybindAction::ScreenCastClear);
+  CHECK(parseAction("screencast-follow-window", bind));
+  CHECK(bind.action == KeybindAction::ScreenCastFollowWindow);
+  CHECK(parseAction("screencast-follow-output", bind));
+  CHECK(bind.action == KeybindAction::ScreenCastFollowOutput);
+  CHECK(parseAction("screencast-follow-stop", bind));
+  CHECK(bind.action == KeybindAction::ScreenCastFollowStop);
+  CHECK(parseAction("screencast-set-window", bind));
+  CHECK(bind.action == KeybindAction::ScreenCastSetWindow);
+  CHECK_EQ(umbriel::payloadIf<umbriel::WindowIdArg>(bind)->id, std::string{});
+  CHECK(parseAction("screencast-set-window:abc123", bind));
+  CHECK_EQ(umbriel::payloadIf<umbriel::WindowIdArg>(bind)->id, std::string{"abc123"});
+  CHECK(!parseAction("dynamic-cast-window", bind));
+  CHECK(!parseAction("dynamic-cast-output", bind));
+  CHECK(!parseAction("dynamic-cast-clear", bind));
   CHECK(parseAction("window-close", bind));
   CHECK_EQ(umbriel::payloadIf<umbriel::WindowIdArg>(bind)->id, std::string{});
   CHECK(parseAction("window-close:abc123", bind));
@@ -607,6 +656,9 @@ UMBRIEL_TEST(payloadAlternativeMatchesTheDeclaredArgKind) {
     case ActionArgKind::Workspace:
       input += ":1";
       break;
+    case ActionArgKind::Output:
+      input += ":DP-1";
+      break;
     case ActionArgKind::WindowId:
       input += ":abc";
       break;
@@ -633,6 +685,7 @@ UMBRIEL_TEST(payloadAlternativeMatchesTheDeclaredArgKind) {
     case ActionArgKind::Workspace:
       CHECK(umbriel::payloadIf<umbriel::WorkspaceArg>(bind) != nullptr);
       break;
+    case ActionArgKind::Output:
     case ActionArgKind::OptionalOutput:
       CHECK(umbriel::payloadIf<umbriel::OutputArg>(bind) != nullptr);
       break;
@@ -691,6 +744,9 @@ UMBRIEL_TEST(everyActionSpecRoundTripsThroughParseAction) {
       break;
     case ActionArgKind::Workspace:
       input += ":1";
+      break;
+    case ActionArgKind::Output:
+      input += ":DP-1";
       break;
     case ActionArgKind::WindowId:
       input += ":abc";
@@ -772,6 +828,8 @@ UMBRIEL_TEST(defaultKeybindsAreUsable) {
   CHECK(close->useMod);
   CHECK_EQ(close->modifiers, uint32_t{0});
   CHECK_EQ(close->keysym, xkb_keysym_to_lower(XKB_KEY_q));
+  // Holding close would also close each window that focus moves to.
+  CHECK(!close->repeat);
 
   // Overview toggle must not key-repeat: holding it would thrash open/close.
   const auto overview =
@@ -801,6 +859,8 @@ UMBRIEL_TEST(everyAdvertisedActionParsesWithItsDeclaredArgument) {
       return ":0.5";
     case ActionArgKind::Workspace:
       return ":1";
+    case ActionArgKind::Output:
+      return ":DP-1";
     case ActionArgKind::OptionalOutput:
       return ":DP-1";
     case ActionArgKind::OptionalScratchpad:
@@ -828,6 +888,8 @@ UMBRIEL_TEST(everyAdvertisedActionParsesWithItsDeclaredArgument) {
       return "<fraction>";
     case ActionArgKind::Workspace:
       return "<workspace>[/<output>]";
+    case ActionArgKind::Output:
+      return "<output>";
     case ActionArgKind::OptionalOutput:
       return "[<output>]";
     case ActionArgKind::OptionalScratchpad:

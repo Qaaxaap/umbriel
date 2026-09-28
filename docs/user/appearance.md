@@ -30,7 +30,7 @@ Colors use `#RRGGBB` or `#RRGGBBAA`.
 | `warning` | Warning text and borders. |
 | `error` | Error text and confirmation borders. |
 | `insert_hint` | Drop-target preview during dragging. |
-| `backdrop` | Fullscreen and lock-screen background. |
+| `backdrop` | Fullscreen background and RGB color of the opaque emergency lock blank. |
 | `shadow` | Window shadow color. |
 
 ### Border colors
@@ -39,13 +39,12 @@ Colors use `#RRGGBB` or `#RRGGBBAA`.
 [colors.border]
 focused = "#7AA3FFFF"
 unfocused = "#292933FF"
-scratchpad_focused = "#E5C07BFF"
-scratchpad_unfocused = "#5C4A2AFF"
 outer = "#1A1A1FFF"
 ```
 
-The first four values select focused and unfocused colors for regular and
-scratchpad windows. `outer` colors the optional outer border.
+`focused` and `unfocused` color the inner border; `outer` colors the optional
+outer border. A [window rule](window-rules.md#border-colors) can override any of
+them for the windows it matches.
 
 ### Overview colors
 
@@ -84,18 +83,21 @@ opaque_fullscreen = true
 | `outer_border_width` | `0` | Outer ring width in logical pixels. |
 | `corner_radius` | `10` | Radius of the complete decorated window. |
 | `drag_opacity` | `0.75` | Opacity while dragging a window. |
-| `opaque_fullscreen` | `true` | Ignore window rule `opacity` for fullscreen windows. |
+| `opaque_fullscreen` | `true` | Draw fullscreen windows over the backdrop and ignore window rule `opacity`. |
 
-With `opaque_fullscreen = false`, a fullscreen window whose rule opacity is
-below 1 keeps it and shows the desktop behind it instead of the backdrop.
-Other fullscreen windows stay opaque and skip blur.
+With `opaque_fullscreen = false`, a fullscreen window that is translucent shows
+the desktop behind it instead of the backdrop, and can be blurred. A window is
+translucent when its rule opacity is below 1 or the application itself draws
+transparent content. Other fullscreen windows stay opaque and skip blur.
 
 Set `prefer_no_csd = false` to let newly connected applications draw their own
 decorations. Restart applications after changing it because decoration protocol
 availability is fixed when an application connects.
 
 Borders render outside window content and are included in layout spacing.
-`corner_radius = 0` keeps every contour square.
+`corner_radius = 0` keeps every contour square. A
+[window rule](window-rules.md#decoration) can override `border_width`,
+`outer_border_width`, and `corner_radius` for the windows it matches.
 
 ### Blur
 
@@ -150,5 +152,7 @@ offset_y = 2
 A window's shadow falls on everything below it, including other floating,
 pinned, or scratchpad windows it overlaps. Tiled windows never shadow each
 other. Shadows are hidden for fullscreen windows. During a
-[custom window animation](animation.md#custom-glsl-shaders), the shadow follows
-the visible shape produced by the shader.
+[custom window animation](animation.md#custom-effects), the shadow follows
+the visible shape produced by the shader. A
+[window rule](window-rules.md#decoration) can turn the shadow on or off for the
+windows it matches.

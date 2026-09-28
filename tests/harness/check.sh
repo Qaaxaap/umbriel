@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# How to write a check (waits, the animation clock, pixel analysis, stress runs) is in CONTRIBUTING.md, "Tests".
 # Boots one contained headless Umbriel per check in checks/, runs the check, kills everything it spawned, and asserts
 # that instance exited cleanly. One instance per check is what makes a failure local: a check starts from the default
 # config with no windows, no overview, and workspace 1 focused, so it asserts behaviour instead of maintaining hygiene
@@ -6,11 +7,13 @@
 # config-restore reloads and window-drain loops that shared-instance checks had to carry.
 # Containment matters. A stock Umbriel start runs its built-in autostarts, and `dbus-update-activation-environment --systemd` would repoint the *caller's* session-wide WAYLAND_DISPLAY and UMBRIEL_SOCKET at this throwaway instance. Unsetting DBUS_SESSION_BUS_ADDRESS makes both autostarts fail harmlessly.
 # Usage: check.sh <path-to-umbriel-binary> [name-fragment ...] [-j N|--jobs N] [-v|--verbose] [-l|--list]
-# Each name fragment selects every check whose name contains it, so several fragments run several checks. Without a
+# A check's name is its path under checks/ without `.sh`, such as `overview/wheel`. Each name fragment selects every
+# check whose name contains it, so `overview/` selects a topic and several fragments run several checks. Without a
 # fragment the whole suite runs. A failing check keeps its runtime directory (compositor and client logs) and prints it.
-# Checks are independent instances, so they run several at a time. `-j` or CHECK_JOBS sets how many; the default stays
-# well under the core count because a check that asserts animation timing is the first thing an overloaded box breaks.
-# Reporting order stays the declaration order regardless of which check finishes first.
+# Checks are independent instances, so they run several at a time. `-j` or CHECK_JOBS sets how many; the default is
+# the core count.
+# Checks start slowest first, by the durations the previous run recorded next to the binary, so a long check does not
+# begin last and stretch the suite. Reporting order stays the declaration order regardless of which check finishes first.
 
 set -euo pipefail
 
@@ -52,11 +55,14 @@ if [[ ! $JOBS =~ ^[0-9]+$ ]]; then
   exit 2
 fi
 if ((JOBS == 0)); then
-  cores=$(nproc 2>/dev/null || echo 1)
-  JOBS=$((cores < 8 ? cores : 8))
+  JOBS=$(nproc 2>/dev/null || echo 1)
 fi
 
 HARNESS_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# CHECK_DIR substitutes another directory of checks. Checks reach repository files through UMBRIEL_REPO.
+CHECKS_DIR=${CHECK_DIR:-$HARNESS_DIR/checks}
+export UMBRIEL_REPO
+UMBRIEL_REPO=$(cd "$HARNESS_DIR/../.." && pwd)
 
 # A check that never returns would otherwise hang the suite with no output. The
 # cap is per check and generous: the slowest checks drive two-second animations.
@@ -75,15 +81,16 @@ else
   TTY=0
   C_OFF='' C_DIM='' C_BOLD='' C_PASS='' C_FAIL='' C_RUN=''
 fi
-readonly NAME_WIDTH=34
+readonly NAME_WIDTH=40
 COLUMNS_MAX=${COLUMNS:-100}
 [[ $COLUMNS_MAX -lt 60 ]] && COLUMNS_MAX=60
 
 all_checks() {
   local check
-  for check in "$HARNESS_DIR"/checks/*.sh; do
-    basename "$check" .sh
-  done
+  while IFS= read -r check; do
+    check=${check#"$CHECKS_DIR"/}
+    echo "${check%.sh}"
+  done < <(find "$CHECKS_DIR" -name '*.sh' -type f | LC_ALL=C sort)
 }
 
 selects() {
@@ -116,6 +123,20 @@ if ((${#SELECTED[@]} == 0)); then
   exit 1
 fi
 
+# A fixed sleep ties a check to machine load. Animation timing belongs on `umbriel clock-freeze`/`clock-advance`, end
+# states on `umbriel settle`, and client state on a poll; a sleep that is genuinely about real time says why.
+sleep_violations=$(
+  for name in "${SELECTED[@]}"; do
+    printf '%s\n' "$CHECKS_DIR/$name.sh"
+  done | xargs awk -f "$HARNESS_DIR/sleep-lint.awk"
+)
+if [[ -n $sleep_violations ]]; then
+  echo "check: fixed sleeps outside polling loops; use the animation clock, settle, or a poll, or end the line with" >&2
+  echo "check: '# real time: <reason>':" >&2
+  printf '%s\n' "$sleep_violations" | sed 's/^/  /' >&2
+  exit 1
+fi
+
 if [[ ! -x $BINARY ]]; then
   echo "check: '$BINARY' is not executable" >&2
   exit 1
@@ -123,12 +144,19 @@ fi
 BINARY=$(realpath "$BINARY")
 BINARY_DIR=$(dirname "$BINARY")
 
+# Checks drive harness-only IPC commands, which only a build with the test_ipc option has.
+if ! "$BINARY" --help 2>/dev/null | grep -qw settle; then
+  echo "check: '$BINARY' lacks the harness IPC commands; configure it with -Dtest_ipc=enabled" >&2
+  exit 1
+fi
+
 # Checks use helper clients built alongside the selected compositor. They land in
 # the build directory's `tests` subdir, where their Meson definitions live.
 # Keeping this resolution here makes every build mode consistent without each
 # recipe having to export a matching set of paths.
 CLIENT_DIR=$BINARY_DIR/tests
 export UMBRIEL_POINTER_CLIENT="$CLIENT_DIR/pointer-client"
+export UMBRIEL_POINTER_MODIFIERS_CLIENT="$CLIENT_DIR/pointer-modifiers-client"
 export UMBRIEL_KEYBOARD_KEYMAP_CLIENT="$CLIENT_DIR/keyboard-keymap-client"
 export UMBRIEL_INPUT_METHOD_CLIENT="$CLIENT_DIR/input-method-client"
 export UMBRIEL_DRAG_CLIENT="$CLIENT_DIR/drag-client"
@@ -146,6 +174,8 @@ export UMBRIEL_FRACTIONAL_CLIENT="$CLIENT_DIR/fractional-client"
 export UMBRIEL_SECURITY_CONTEXT_CLIENT="$CLIENT_DIR/security-context-client"
 export UMBRIEL_SEAT_LOG_CLIENT="$CLIENT_DIR/seat-log-client"
 export UMBRIEL_OUTPUT_MANAGEMENT_CLIENT="$CLIENT_DIR/output-management-client"
+export UMBRIEL_PIXEL_PROBE="$CLIENT_DIR/pixel-probe"
+export UMBRIEL_HARNESS_LIB="$HARNESS_DIR/lib.sh"
 export UMBRIEL=$BINARY
 
 # Live instance state. The EXIT trap reaches for these, so they stay declared
@@ -155,6 +185,7 @@ SERVER_PID=
 INSTANCE_PGID=
 CHECK_PGID=
 IPC_CLIENT_PID=
+KEYBOARD_PID=
 KEPT_DIRS=()
 
 now_us() {
@@ -218,6 +249,7 @@ kill_check_group() {
 # instance's process group rather than the check's, and reaping that group is
 # the only way they do not outlive the run.
 kill_instance() {
+  stop_keyboard
   if [[ -n $IPC_CLIENT_PID ]] && kill -0 "$IPC_CLIENT_PID" 2>/dev/null; then
     kill -KILL "$IPC_CLIENT_PID" 2>/dev/null || true
     wait "$IPC_CLIENT_PID" 2>/dev/null || true
@@ -308,9 +340,45 @@ EOF
 # A check that needs a second monitor declares it in its header and the harness boots that instance accordingly.
 # Everything else gets one output, which is what most geometry assertions are written against. A check that needs
 # monitors to come and go uses `umbriel output-create` and `umbriel output-destroy` on top of what it declares here.
+# A real session has a keyboard from the start, and a headless one has none until a virtual keyboard arrives; without
+# one the seat's keyboard capability also drops between helper runs, so clients bind wl_keyboard late and miss keys.
+# Each instance therefore gets a keyboard-only helper before its check runs, which stays connected through teardown. A
+# check about keyboard arrival itself opts out with `# harness: keyboard=none` in its header.
+check_keyboard() {
+  if sed -n '2,12p' "$CHECKS_DIR/$1.sh" | grep -q '^# harness: keyboard=none'; then
+    echo none
+  else
+    echo virtual
+  fi
+}
+
+start_keyboard() {
+  local log=$RUNTIME_DIR/keyboard.log
+  XDG_RUNTIME_DIR="$RUNTIME_DIR" WAYLAND_DISPLAY=wayland-0 \
+    "$UMBRIEL_POINTER_CLIENT" 1 1 keyboard-only mod none mark ready pause 86400000 > "$log" 2>&1 &
+  KEYBOARD_PID=$!
+  local waited=0
+  until grep -q '^ready$' "$log" 2>/dev/null; do
+    if ! kill -0 "$KEYBOARD_PID" 2>/dev/null || ((waited >= 400)); then
+      BOOT_ERROR="the harness keyboard never attached"$'\n'"$(< "$log")"
+      return 1
+    fi
+    sleep 0.005
+    waited=$((waited + 1))
+  done
+}
+
+stop_keyboard() {
+  if [[ -n $KEYBOARD_PID ]] && kill -0 "$KEYBOARD_PID" 2>/dev/null; then
+    kill -KILL "$KEYBOARD_PID" 2>/dev/null || true
+    wait "$KEYBOARD_PID" 2>/dev/null || true
+  fi
+  KEYBOARD_PID=
+}
+
 check_outputs() {
   local declared
-  declared=$(sed -n '2,12p' "$HARNESS_DIR/checks/$1.sh" |
+  declared=$(sed -n '2,12p' "$CHECKS_DIR/$1.sh" |
     sed -n 's/^# harness: outputs=\([0-9][0-9]*\).*/\1/p' | head -1)
   [[ -z $declared ]] && declared=1
   echo "$declared"
@@ -429,6 +497,7 @@ stop_instance() {
     wait "$IPC_CLIENT_PID" 2>/dev/null || true
   fi
   IPC_CLIENT_PID=
+  stop_keyboard
   reap_instance_group
 
   if [[ $status -ne 0 ]]; then
@@ -457,7 +526,7 @@ run_check_body() {
     XDG_RUNTIME_DIR="$RUNTIME_DIR" \
     WAYLAND_DISPLAY=wayland-0 \
     bash -c 'echo $$ > "$1"; shift; exec "$@"' _ "$pgid_file" \
-    timeout -k 5 "$CHECK_TIMEOUT" bash "$HARNESS_DIR/checks/$name.sh" > "$output_file" 2>&1 &
+    timeout -k 5 "$CHECK_TIMEOUT" bash "$CHECKS_DIR/$name.sh" > "$output_file" 2>&1 &
   local body_pid=$!
   CHECK_PGID=$(child_pgid "$pgid_file" "$body_pid")
   local status=0
@@ -483,6 +552,10 @@ run_one() {
 
   BOOT_ERROR=
   if ! start_instance "$(check_outputs "$name")"; then
+    publish "$prefix" 1 "$check_start" "$BOOT_ERROR"
+    return 0
+  fi
+  if [[ $(check_keyboard "$name") == virtual ]] && ! start_keyboard; then
     publish "$prefix" 1 "$check_start" "$BOOT_ERROR"
     return 0
   fi
@@ -531,6 +604,7 @@ report_one() {
   [[ -f $prefix.status ]] && status=$(< "$prefix.status")
   [[ -f $prefix.out ]] && text=$(< "$prefix.out")
   [[ -f $prefix.time ]] && duration=$(< "$prefix.time")
+  DURATION[$name]=${duration%s}
   if ((status == 0)); then
     row PASS "$name" "$duration" "$text"
     passed=$((passed + 1))
@@ -547,9 +621,9 @@ report_one() {
 # counts finished-not-yet-reported workers as free: reporting is ordered by
 # declaration so the output is stable, while execution is not.
 running_count() {
-  local index count=0
-  for ((index = REPORTED; index < DISPATCHED; index++)); do
-    [[ -f $RESULT_DIR/${SELECTED[index]}.status ]] || count=$((count + 1))
+  local name count=0
+  for name in "${!WORKER_PID[@]}"; do
+    [[ -f $RESULT_DIR/$name.status ]] || count=$((count + 1))
   done
   echo "$count"
 }
@@ -558,9 +632,8 @@ running_count() {
 # run_one) would otherwise leave the pool waiting on a child that no longer
 # exists, so give it a verdict of its own.
 fail_unpublished() {
-  local index name
-  for ((index = REPORTED; index < DISPATCHED; index++)); do
-    name=${SELECTED[index]}
+  local name
+  for name in "${!WORKER_PID[@]}"; do
     [[ -f $RESULT_DIR/$name.status ]] && continue
     printf '%s' "worker exited without a verdict" > "$RESULT_DIR/$name.out"
     printf '0.00s' > "$RESULT_DIR/$name.time"
@@ -588,9 +661,62 @@ suite_cleanup() {
 trap suite_cleanup EXIT
 
 RESULT_DIR=$(mktemp -d /tmp/umv-results.XXXXXXXX)
+for name in "${SELECTED[@]}"; do
+  mkdir -p "$(dirname "$RESULT_DIR/$name")"
+done
 declare -A WORKER_PID=()
 DISPATCHED=0
 REPORTED=0
+
+# Seconds per check from earlier runs, one "name seconds" line each. Checks this run did not select keep their entry;
+# checks that no longer exist lose it.
+DURATIONS_FILE=${CHECK_DURATIONS_FILE:-$BINARY_DIR/tests/check-durations}
+declare -A DURATION=()
+if [[ -r $DURATIONS_FILE ]]; then
+  while read -r name seconds; do
+    [[ -n $name && $seconds =~ ^[0-9]+(\.[0-9]+)?$ ]] && DURATION[$name]=$seconds
+  done < "$DURATIONS_FILE"
+fi
+# A check with no recorded duration may be slow, so it starts with the slowest.
+mapfile -t DISPATCH_ORDER < <(
+  for name in "${SELECTED[@]}"; do
+    printf '%s %s\n' "${DURATION[$name]:-999999}" "$name"
+  done | sort -s -k1,1gr | cut -d' ' -f2
+)
+
+save_durations() {
+  local name
+  for name in "${!DURATION[@]}"; do
+    [[ -f $CHECKS_DIR/$name.sh ]] && printf '%s %s\n' "$name" "${DURATION[$name]}"
+  done | sort > "$DURATIONS_FILE.tmp" 2>/dev/null && mv "$DURATIONS_FILE.tmp" "$DURATIONS_FILE" 2>/dev/null || true
+}
+
+# Seconds a check may take before the summary names it. A check over it is a candidate for the animation clock or a
+# split, not a failure.
+CHECK_BUDGET=${CHECK_BUDGET:-8}
+
+print_over_budget() {
+  local line
+  line=$(
+    for name in "${SELECTED[@]}"; do
+      printf '%s %s\n' "${DURATION[$name]:-0}" "$name"
+    done | sort -k1,1gr | awk -v budget="$CHECK_BUDGET" '$1 > budget { printf "%s%s %ss", (n++ ? " · " : ""), $2, $1 }'
+  )
+  [[ -z $line ]] && return 0
+  printf '%s\n' "  ${C_RUN}over the ${CHECK_BUDGET}s budget: ${line}${C_OFF}"
+}
+
+# The slowest checks of this run, so growth shows up when it happens.
+print_slowest() {
+  ((${#SELECTED[@]} < 10)) && return 0
+  local line
+  line=$(
+    for name in "${SELECTED[@]}"; do
+      printf '%s %s\n' "${DURATION[$name]:-0}" "$name"
+    done | sort -k1,1gr | awk 'NR <= 5 { printf "%s%s %ss", (NR > 1 ? " · " : ""), $2, $1 }'
+  )
+  printf '%s\n' "  ${C_DIM}slowest: ${line}${C_OFF}"
+}
 
 header
 suite_start=$(now_us)
@@ -599,7 +725,7 @@ FAILED_NAMES=()
 
 while ((REPORTED < ${#SELECTED[@]})); do
   while ((DISPATCHED < ${#SELECTED[@]} && $(running_count) < JOBS)); do
-    name=${SELECTED[DISPATCHED]}
+    name=${DISPATCH_ORDER[DISPATCHED]}
     # With one worker the live row is the progress indicator. With more it would
     # be a lie, because several checks are in flight at once.
     ((JOBS == 1)) && start_row "$name"
@@ -608,7 +734,7 @@ while ((REPORTED < ${#SELECTED[@]})); do
     DISPATCHED=$((DISPATCHED + 1))
   done
 
-  while ((REPORTED < DISPATCHED)) && [[ -f $RESULT_DIR/${SELECTED[REPORTED]}.status ]]; do
+  while ((REPORTED < ${#SELECTED[@]})) && [[ -f $RESULT_DIR/${SELECTED[REPORTED]}.status ]]; do
     name=${SELECTED[REPORTED]}
     wait "${WORKER_PID[$name]}" 2>/dev/null || true
     unset "WORKER_PID[$name]"
@@ -626,7 +752,10 @@ done
 
 failed=${#FAILED_NAMES[@]}
 total_time=$(elapsed "$suite_start")
+save_durations
 printf '\n'
+print_slowest
+print_over_budget
 if ((failed > 0)); then
   printf '%s\n' "  ${C_FAIL}${C_BOLD}${failed} failed${C_OFF} ${C_DIM}·${C_OFF} $passed passed ${C_DIM}·${C_OFF} ${C_DIM}${total_time}${C_OFF}"
   for index in "${!FAILED_NAMES[@]}"; do

@@ -2,6 +2,7 @@
 
 #include "config/config.h"
 #include "core/log.h"
+#include "output/output.h"
 #include "overview/overview.h"
 #include "scene/color.h"
 #include "server/ipc_commands.h"
@@ -10,6 +11,7 @@
 #include <algorithm>
 #include <bit>
 #include <cerrno>
+#include <charconv>
 #include <cstdlib>
 #include <nlohmann/json.hpp>
 #include <optional>
@@ -28,6 +30,8 @@ namespace umbriel {
     // A subscriber that stops reading must not grow the compositor's heap without bound.
     constexpr size_t kMaxOutboundBacklog = 256 * 1024;
     constexpr int kConnectionTimeoutMs = 1000;
+    // Long enough for any configured animation to finish; a compositor that never settles still answers.
+    constexpr int kFrameWaitTimeoutMs = 30000;
 
     nlohmann::json themeEvent() {
       const auto& current = config();
@@ -50,8 +54,6 @@ namespace umbriel {
                 {
                     {"focused", rgbaHex(colors.border.focused)},
                     {"unfocused", rgbaHex(colors.border.unfocused)},
-                    {"scratchpad_focused", rgbaHex(colors.border.scratchpadFocused)},
-                    {"scratchpad_unfocused", rgbaHex(colors.border.scratchpadUnfocused)},
                     {"outer", rgbaHex(colors.border.outer)},
                 }},
                {"overview",
@@ -100,6 +102,34 @@ namespace umbriel {
 
     nlohmann::json submapEvent(Server& server) {
       return nlohmann::json{{"event", "submap"}, {"data", IpcCommands::submap(server, {}).at("ok")}};
+    }
+
+    nlohmann::json screenCastEvent(Server& server) {
+      const ScreenCastCommand& command = server.screenCastCommand();
+      nlohmann::json data{{"serial", command.serial}};
+      switch (command.kind) {
+      case ScreenCastCommandKind::Clear:
+        data["kind"] = "clear";
+        break;
+      case ScreenCastCommandKind::SetOutput:
+        data["kind"] = "output";
+        data["output"] = command.value;
+        break;
+      case ScreenCastCommandKind::SetWindow:
+        data["kind"] = "window";
+        data["identifier"] = command.value;
+        break;
+      case ScreenCastCommandKind::FollowWindow:
+        data["kind"] = "follow_window";
+        break;
+      case ScreenCastCommandKind::FollowOutput:
+        data["kind"] = "follow_output";
+        break;
+      case ScreenCastCommandKind::FollowStop:
+        data["kind"] = "follow_stop";
+        break;
+      }
+      return nlohmann::json{{"event", "screencast"}, {"data", std::move(data)}};
     }
   } // namespace
 
@@ -225,11 +255,22 @@ namespace umbriel {
     }
 
     bool keep = true;
-    if (!connection->responding && (mask & (WL_EVENT_READABLE | WL_EVENT_HANGUP)) != 0) {
-      keep = owner->readRequest(*connection);
-    }
-    if (keep && connection->responding) {
-      keep = owner->writeResponse(*connection);
+    bool mayRead = (mask & (WL_EVENT_READABLE | WL_EVENT_HANGUP)) != 0;
+    while (keep) {
+      if (!connection->responding) {
+        const bool bufferedRequest = connection->input.contains('\n');
+        if ((!mayRead && !bufferedRequest) || connection->frameWait != FrameWait::None) {
+          break;
+        }
+        keep = owner->readRequest(*connection);
+        mayRead = false;
+      }
+      if (keep && connection->responding) {
+        keep = owner->writeResponse(*connection);
+      }
+      if (!keep || connection->responding || !connection->input.contains('\n')) {
+        break;
+      }
     }
     if (!keep) {
       owner->removeConnection(connection);
@@ -240,18 +281,20 @@ namespace umbriel {
   bool Ipc::readRequest(Connection& connection) {
     char chunk[4096];
     while (true) {
+      if (connection.input.contains('\n')) {
+        const size_t newline = connection.input.find('\n');
+        const std::string line = connection.input.substr(0, newline);
+        connection.input.erase(0, newline + 1);
+        if (auto response = handleRequest(connection, line)) {
+          prepareResponse(connection, std::move(*response));
+        }
+        return true;
+      }
       const ssize_t size = recv(connection.fd, chunk, sizeof(chunk), 0);
       if (size > 0) {
         connection.input.append(chunk, static_cast<size_t>(size));
         if (connection.input.size() > kMaxRequestSize) {
           prepareResponse(connection, R"({"err":"request too long"})");
-          return true;
-        }
-        if (connection.input.contains('\n')) {
-          const size_t newline = connection.input.find('\n');
-          const std::string line = connection.input.substr(0, newline);
-          connection.input.erase(0, newline + 1);
-          prepareResponse(connection, handleRequest(connection, line));
           return true;
         }
         continue;
@@ -262,7 +305,9 @@ namespace umbriel {
         }
         const std::string line = std::move(connection.input);
         connection.input.clear();
-        prepareResponse(connection, handleRequest(connection, line));
+        if (auto response = handleRequest(connection, line)) {
+          prepareResponse(connection, std::move(*response));
+        }
         return true;
       }
       if (errno == EINTR) {
@@ -307,8 +352,82 @@ namespace umbriel {
 
   int Ipc::onConnectionTimeout(void* data) {
     auto* connection = static_cast<Connection*>(data);
+    if (connection->frameWait != FrameWait::None) {
+      const std::string what = connection->frameWait == FrameWait::Settled ? "not settled" : "no frame drawn";
+      connection->owner->finishFrameWait(
+          *connection,
+          nlohmann::json{{"err", what + " within " + std::to_string(kFrameWaitTimeoutMs / 1000) + "s"}}.dump()
+      );
+      return 0;
+    }
     connection->owner->removeConnection(connection);
     return 0;
+  }
+
+  void Ipc::beginFrameWait(Connection& connection, FrameWait wait, std::string reply) {
+    connection.frameWait = wait;
+    connection.waitReply = std::move(reply);
+    connection.waitOutputs.clear();
+    // Nothing more is read from a waiting connection, and a client that half-closes must not end the wait.
+    wl_event_source_fd_update(connection.fdSource, 0);
+    if (connection.deadline != nullptr) {
+      wl_event_source_timer_update(connection.deadline, kFrameWaitTimeoutMs);
+    }
+    for (const auto& output : m_server->outputs()) {
+      if (output->wlr()->enabled) {
+        connection.waitOutputs.emplace_back(output->wlr()->name);
+        // An idle output draws no frame on its own, and the reply waits for one from each.
+        wlr_output_schedule_frame(output->wlr());
+      }
+    }
+    if (connection.waitOutputs.empty() && (wait == FrameWait::Drawn || m_server->settled())) {
+      finishFrameWait(connection, std::move(connection.waitReply));
+    }
+  }
+
+  void Ipc::finishFrameWait(Connection& connection, std::string response) {
+    connection.frameWait = FrameWait::None;
+    connection.waitOutputs.clear();
+    connection.waitReply.clear();
+    prepareResponse(connection, std::move(response));
+    // Callers may still hold the connection, so a failed update is left to the deadline to clean up.
+    static_cast<void>(wl_event_source_fd_update(connection.fdSource, WL_EVENT_WRITABLE));
+  }
+
+  void Ipc::notifyOutputFrame(const Output& output) {
+    std::vector<Connection*> ready;
+    std::vector<Connection*> stuck;
+    for (const auto& connection : m_connections) {
+      if (connection->frameWait == FrameWait::None) {
+        continue;
+      }
+      // Outputs destroyed during the wait never draw again.
+      std::erase_if(connection->waitOutputs, [this, &output](const std::string& name) {
+        return name == output.wlr()->name || std::ranges::none_of(m_server->outputs(), [&name](const auto& candidate) {
+                 return candidate->wlr()->enabled && name == candidate->wlr()->name;
+               });
+      });
+#ifdef UMBRIEL_TEST_IPC
+      // A frozen animation never ends, so the wait would only time out.
+      if (connection->frameWait == FrameWait::Settled
+          && m_server->animationClockFrozen()
+          && m_server->animationsActive()) {
+        stuck.push_back(connection.get());
+        continue;
+      }
+#endif
+      if (connection->waitOutputs.empty() && (connection->frameWait == FrameWait::Drawn || m_server->settled())) {
+        ready.push_back(connection.get());
+      }
+    }
+    for (Connection* connection : ready) {
+      finishFrameWait(*connection, std::move(connection->waitReply));
+    }
+    for (Connection* connection : stuck) {
+      finishFrameWait(
+          *connection, R"({"err":"an animation is running on the frozen animation clock; clock-advance past it first"})"
+      );
+    }
   }
 
   void Ipc::removeConnection(Connection* connection) {
@@ -320,6 +439,13 @@ namespace umbriel {
     }
     closeConnection(**entry);
     m_connections.erase(entry);
+    refreshScreenCastActive();
+  }
+
+  void Ipc::refreshScreenCastActive() {
+    m_server->setScreenCastActive(std::ranges::any_of(m_connections, [](const auto& connection) {
+      return connection->screenCastActive;
+    }));
   }
 
   void Ipc::closeConnection(Connection& connection) {
@@ -337,12 +463,21 @@ namespace umbriel {
     }
   }
 
-  std::string Ipc::handleRequest(Connection& connection, std::string_view line) {
+  std::optional<std::string> Ipc::handleRequest(Connection& connection, std::string_view line) {
     auto req = nlohmann::json::parse(line, nullptr, false);
     if (req.is_discarded() || !req.is_object() || !req.contains("cmd") || !req["cmd"].is_string()) {
       return R"({"err":"malformed request"})";
     }
     const std::string cmd = req["cmd"].get<std::string>();
+    if (cmd == "screencast-session") {
+      const auto active = req.find("active");
+      if (active == req.end() || !active->is_boolean()) {
+        return R"({"err":"malformed request"})";
+      }
+      connection.screenCastActive = active->get<bool>();
+      refreshScreenCastActive();
+      return R"({"ok":null})";
+    }
     if (cmd == "subscribe") {
       if (!req.contains("events") || !req["events"].is_array() || req["events"].empty()) {
         return R"({"err":"malformed request"})";
@@ -399,8 +534,34 @@ namespace umbriel {
       if ((requested & Ipc::kEventSubmap) != 0) {
         append(submapEvent(*m_server));
       }
+      if ((requested & Ipc::kEventScreenCast) != 0) {
+        append(screenCastEvent(*m_server));
+      }
       return response;
     }
+#ifdef UMBRIEL_TEST_IPC
+    if (cmd == "settle") {
+      beginFrameWait(connection, FrameWait::Settled, IpcCommands::settle(*m_server, {}).dump());
+      return std::nullopt;
+    }
+    if (cmd == "clock-advance") {
+      if (!req.contains("arg") || !req["arg"].is_string()) {
+        return R"({"err":"malformed request"})";
+      }
+      const auto& arg = req["arg"].get_ref<const std::string&>();
+      uint64_t ms = 0;
+      const auto [end, error] = std::from_chars(arg.data(), arg.data() + arg.size(), ms);
+      if (error != std::errc{} || end != arg.data() + arg.size() || ms == 0) {
+        return nlohmann::json{{"err", "clock-advance needs a positive number of milliseconds, got '" + arg + "'"}}
+            .dump();
+      }
+      if (!m_server->advanceAnimationClock(ms)) {
+        return R"({"err":"the animation clock is not frozen"})";
+      }
+      beginFrameWait(connection, FrameWait::Drawn, IpcCommands::clockAdvance(*m_server, arg).dump());
+      return std::nullopt;
+    }
+#endif
     const IpcCommandSpec* spec = findIpcCommand(cmd);
     if (spec == nullptr) {
       return nlohmann::json{{"err", "unknown command: " + cmd}}.dump();
@@ -466,5 +627,7 @@ namespace umbriel {
   void Ipc::notifyWorkspacesChanged() { broadcastEvent(kEventWorkspaces, workspacesEvent(*m_server)); }
 
   void Ipc::notifySubmapChanged() { broadcastEvent(kEventSubmap, submapEvent(*m_server)); }
+
+  void Ipc::notifyScreenCastChanged() { broadcastEvent(kEventScreenCast, screenCastEvent(*m_server)); }
 
 } // namespace umbriel

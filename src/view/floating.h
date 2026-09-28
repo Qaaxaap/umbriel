@@ -46,6 +46,17 @@ namespace umbriel {
     };
   }
 
+  // clampFloatingOrigin for a resize target, except that an axis the window fills
+  // or overflows snaps to the usable edge rather than keeping its old offset.
+  [[nodiscard]] constexpr FloatingPoint
+  clampFloatingOriginForResize(FloatingPoint origin, const wlr_box& geometry, const wlr_box& usable) {
+    const FloatingPoint clamped = clampFloatingOrigin(origin, geometry, usable);
+    return {
+        .x = geometry.width >= usable.width ? usable.x : clamped.x,
+        .y = geometry.height >= usable.height ? usable.y : clamped.y,
+    };
+  }
+
   // Where the window's content sits mid-resize. The edge being dragged moves and the opposite one stays put, which
   // matters because the client's geometry catches up asynchronously: without an anchor, a left- or top-edge drag would
   // visibly walk the far edge as each configure lands.

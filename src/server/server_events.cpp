@@ -13,6 +13,7 @@
 #include "output/output.h"
 #include "overview/overview.h"
 #include "scene/cheatsheet.h"
+#include "scene/effect_registry.h"
 #include "scene/hint_rect.h"
 #include "scene/quit_confirm.h"
 #include "server/backend_manager.h"
@@ -27,6 +28,7 @@
 #include <algorithm>
 #include <array>
 #include <optional>
+#include <span>
 #include <string_view>
 #include <unordered_set>
 #include <vector>
@@ -183,6 +185,26 @@ namespace umbriel {
       }
     }
 
+    void applyLeftHanded(
+        libinput_device* libinputDevice, const wlr_input_device* device, const std::optional<bool>& configured,
+        std::string_view setting
+    ) {
+      if (libinput_device_config_left_handed_is_available(libinputDevice) == 0) {
+        if (configured) {
+          kLog.warn("input: '{}' does not support {}", deviceName(device), setting);
+        }
+        return;
+      }
+      const bool enabled = configured.value_or(libinput_device_config_left_handed_get_default(libinputDevice) != 0);
+      if (libinput_device_config_left_handed_set(libinputDevice, enabled) != LIBINPUT_CONFIG_STATUS_SUCCESS) {
+        if (configured) {
+          kLog.warn("input: failed to apply {} to '{}'", setting, deviceName(device));
+        } else {
+          kLog.warn("input: failed to restore the default left-handed state for '{}'", deviceName(device));
+        }
+      }
+    }
+
     void applyClickMethod(
         libinput_device* libinputDevice, const wlr_input_device* device, std::optional<ClickMethod> configured,
         std::string_view setting
@@ -218,6 +240,32 @@ namespace umbriel {
         } else {
           kLog.warn("input: failed to restore the default click method for '{}'", deviceName(device));
         }
+      }
+    }
+
+    void applyTapButtonMap(
+        libinput_device* libinputDevice, const wlr_input_device* device, std::optional<TapButtonMap> configured,
+        std::string_view setting
+    ) {
+      if (!configured) {
+        if (libinput_device_config_tap_set_button_map(
+                libinputDevice, libinput_device_config_tap_get_default_button_map(libinputDevice)
+            )
+            != LIBINPUT_CONFIG_STATUS_SUCCESS) {
+          kLog.warn("input: failed to restore the default tap button map for '{}'", deviceName(device));
+        }
+        return;
+      }
+      enum libinput_config_tap_button_map requested = LIBINPUT_CONFIG_TAP_MAP_LRM;
+      switch (*configured) {
+      case TapButtonMap::LeftRightMiddle:
+        break;
+      case TapButtonMap::LeftMiddleRight:
+        requested = LIBINPUT_CONFIG_TAP_MAP_LMR;
+        break;
+      }
+      if (libinput_device_config_tap_set_button_map(libinputDevice, requested) != LIBINPUT_CONFIG_STATUS_SUCCESS) {
+        kLog.warn("input: failed to apply {} to '{}'", setting, deviceName(device));
       }
     }
 
@@ -423,6 +471,13 @@ namespace umbriel {
               deviceName(device)
           );
         }
+        const bool hasTapMapOverride = override != nullptr && override->tapButtonMap.has_value();
+        const std::optional<TapButtonMap>& tapButtonMap =
+            hasTapMapOverride ? override->tapButtonMap : input.touchpad.tapButtonMap;
+        applyTapButtonMap(
+            libinputDevice, device, tapButtonMap,
+            hasTapMapOverride ? "input.device.tap_button_map" : "input.touchpad.tap_button_map"
+        );
       }
 
       const bool hasClickOverride = override != nullptr && override->clickMethod.has_value();
@@ -443,6 +498,16 @@ namespace umbriel {
           override != nullptr && override->naturalScroll ? "input.device.natural_scroll"
               : isTouchpad                               ? "input.touchpad.natural_scroll"
                                                          : "input.mouse.natural_scroll"
+      );
+
+      const std::optional<bool>& leftHanded = override != nullptr && override->leftHanded ? override->leftHanded
+          : isTouchpad                                                                    ? input.touchpad.leftHanded
+                                                                                          : input.mouse.leftHanded;
+      applyLeftHanded(
+          libinputDevice, device, leftHanded,
+          override != nullptr && override->leftHanded ? "input.device.left_handed"
+              : isTouchpad                            ? "input.touchpad.left_handed"
+                                                      : "input.mouse.left_handed"
       );
 
       // Button scrolling has no `[input.touchpad]` counterpart: a touchpad only gets it from its own device rule,
@@ -479,6 +544,27 @@ namespace umbriel {
                                                        : "input.mouse.sensitivity"
       );
     }
+
+    // A touchscreen is a physical panel, so with no map_to_output it follows the output the device reports, or else
+    // the only enabled built-in panel. Two built-in panels are ambiguous and leave the device on the full layout.
+    Output* defaultTouchOutput(std::span<const std::unique_ptr<Output>> outputs, const char* reported) {
+      Output* builtin = nullptr;
+      bool ambiguous = false;
+      for (const auto& output : outputs) {
+        if (!output->wlr()->enabled) {
+          continue;
+        }
+        const std::string_view name = output->wlr()->name;
+        if (reported != nullptr && name == reported) {
+          return output.get();
+        }
+        if (name.starts_with("eDP-") || name.starts_with("LVDS-") || name.starts_with("DSI-")) {
+          ambiguous = builtin != nullptr;
+          builtin = output.get();
+        }
+      }
+      return ambiguous ? nullptr : builtin;
+    }
   } // namespace
   void Server::applyConfig(const ConfigEffects& effects) {
     if (!effects.any()) {
@@ -495,8 +581,16 @@ namespace umbriel {
         }
       }
     }
-    if (effects.animation) {
-      prepareAnimationShaders(m_renderer);
+    if (effects.animation || effects.effects) {
+      effectRegistry().prepare(m_renderer);
+    }
+    if (effects.effects) {
+      // The next frame re-arms the effect timer from the new max_fps.
+      for (const auto& output : m_outputs) {
+        if (output->effectEligible() > 0) {
+          output->scheduleEffectFrame();
+        }
+      }
     }
 
     if (effects.sceneBlur) {
@@ -523,6 +617,9 @@ namespace umbriel {
       }
       for (const auto& tablet : m_tabletDevices) {
         applyTabletConfig(*tablet);
+      }
+      for (const auto& touch : m_touchDevices) {
+        applyTouchConfig(*touch);
       }
       for (const auto& pad : m_tabletPads) {
         applyTabletPadConfig(*pad);
@@ -596,9 +693,18 @@ namespace umbriel {
       }
       // The view refresh cleared every focus ring; put the active one back.
       refocus();
+      // Screen and cursor presets take their palette from [colors] too.
+      m_effects.applyOutputEffects();
       markDirty(Dirty::Backdrop);
       if (m_sessionLocked) {
         updateLockBlank();
+      }
+    }
+    if (effects.effects && !effects.viewChrome) {
+      for (const auto& view : m_registry.all()) {
+        if (view->mapped()) {
+          view->applyDynamicRules();
+        }
       }
     }
     if (effects.animation && m_scratchpadManager != nullptr) {
@@ -687,12 +793,28 @@ namespace umbriel {
 
   // Fires when the underlying GL context is invalidated (GPU reset, VRAM lost after suspend, driver-detected hang).
   // Without this, the renderer keeps issuing GL calls into a dead context: Mesa's context_lost_nop_handler no-ops each
-  // one and spams "[GLES2] GL_CONTEXT_LOST in context lost" ~40k lines/sec, and the desktop never comes back. Rebuild
-  // the renderer and rebind everything.
+  // one and spams "[GLES2] GL_CONTEXT_LOST in context lost" ~40k lines/sec, and the desktop never comes back. Defer
+  // rebuilding until this signal and the failed render call have both unwound.
   void Server::onRendererLost(wl_listener* listener, void* /*data*/) {
     Server* self;
     self = wl_container_of(listener, self, m_rendererLost);
-    self->recreateRenderer();
+    if (self->m_stopping || self->m_rendererRecoveryIdle != nullptr) {
+      return;
+    }
+    self->m_rendererRecoveryIdle =
+        wl_event_loop_add_idle(wl_display_get_event_loop(self->m_display), onRendererRecoveryIdle, self);
+    if (self->m_rendererRecoveryIdle == nullptr) {
+      kLog.error("could not defer renderer recovery, terminating");
+      self->stop();
+    }
+  }
+
+  void Server::onRendererRecoveryIdle(void* data) {
+    auto* self = static_cast<Server*>(data);
+    self->m_rendererRecoveryIdle = nullptr;
+    if (!self->m_stopping) {
+      self->recreateRenderer();
+    }
   }
 
   void Server::recreateRenderer() {
@@ -729,7 +851,7 @@ namespace umbriel {
 
     m_renderer = newRenderer;
     m_allocator = newAllocator;
-    prepareAnimationShaders(m_renderer);
+    effectRegistry().prepare(m_renderer);
 
     // Point the compositor at the new renderer so clients' shm/dma-buf textures get
     // re-imported on next attach.
@@ -972,6 +1094,28 @@ namespace umbriel {
     delete watch;
     server->updateIdleInhibit();
     kLog.debug("idle inhibitor removed");
+  }
+
+  void Server::onNewImageCopySession(wl_listener* listener, void* data) {
+    Server* self;
+    self = wl_container_of(listener, self, m_newImageCopySession);
+    auto* session = static_cast<wlr_ext_image_copy_capture_session_v1*>(data);
+    auto* watch = new ImageCopySessionWatch();
+    watch->server = self;
+    watch->destroy.notify = onImageCopySessionDestroy;
+    wl_signal_add(&session->events.destroy, &watch->destroy);
+  }
+
+  // The session's render lock is released after this signal; the frame it schedules runs from an idle, without it.
+  void Server::onImageCopySessionDestroy(wl_listener* listener, void* /*data*/) {
+    ImageCopySessionWatch* watch;
+    watch = wl_container_of(listener, watch, destroy);
+    Server* server = watch->server;
+    wl_list_remove(&watch->destroy.link);
+    delete watch;
+    for (const auto& output : server->m_outputs) {
+      output->scheduleEffectCaptureRelease();
+    }
   }
 
   void Server::onNewShortcutsInhibitor(wl_listener* listener, void* data) {
@@ -1260,37 +1404,58 @@ namespace umbriel {
       return;
     }
 
-    cancelModifierTap();
-    m_sessionLocked = true;
-    m_overview->forceClose();
-    if (m_cheatsheet != nullptr) {
-      m_cheatsheet->hide();
+    m_sessionLock = std::make_unique<SessionLock>(*this, lock);
+    m_sessionLock->start();
+  }
+
+  void Server::activateSessionLock(SessionLock* lock) {
+    if (m_sessionLock.get() != lock) {
+      return;
     }
-    if (m_quitConfirm != nullptr) {
-      m_quitConfirm->hide();
-    }
-    m_cursor->resetMode();
-    m_cursor->clearConstraint();
-    m_lockFocusOutput.clear();
-    if (View* focused = View::fromSurface(m_seat->wlr()->keyboard_state.focused_surface)) {
-      if (Workspace* workspace = focused->workspace(); workspace != nullptr && workspace->group() != nullptr) {
-        if (const Output* output = workspace->group()->output(); output != nullptr) {
-          m_lockFocusOutput = output->wlr()->name;
+
+    if (!m_sessionLocked) {
+      m_lockFocusOutput.clear();
+      if (View* focused = View::fromSurface(m_seat->wlr()->keyboard_state.focused_surface)) {
+        if (Workspace* workspace = focused->workspace(); workspace != nullptr && workspace->group() != nullptr) {
+          if (const Output* output = workspace->group()->output(); output != nullptr) {
+            m_lockFocusOutput = output->wlr()->name;
+          }
         }
       }
+
+      m_sessionLocked = true;
+      m_effects.setSuspended(true);
+      m_effects.applyOutputEffects();
+      cancelModifierTap();
+      m_overview->forceClose();
+      if (m_cheatsheet != nullptr) {
+        m_cheatsheet->hide();
+      }
+      if (m_quitConfirm != nullptr) {
+        m_quitConfirm->hide();
+      }
+      m_cursor->resetMode();
+      m_cursor->clearConstraint();
+      clearNormalFocus();
+      updateIdleInhibit();
     }
-    clearNormalFocus();
-    updateIdleInhibit();
+
     updateLockBlank();
     setLockBlankEnabled(true);
     raiseLockTree();
-    m_sessionLock = std::make_unique<SessionLock>(*this, lock);
   }
 
   void Server::unlockSession() {
     m_sessionLocked = false;
+    m_effects.setSuspended(false);
+    m_effects.applyOutputEffects();
+    for (const auto& output : m_outputs) {
+      if (output->effectEligible() > 0) {
+        output->scheduleEffectFrame();
+      }
+    }
     updateIdleInhibit();
-    wlr_scene_node_set_enabled(&m_lockBlank->node, false);
+    setLockBlankEnabled(false);
     // The cursor need not sit on the output that had focus, so restore the
     // remembered one. refocus() then keeps that output's active workspace, which
     // is what makes unlocking on an empty workspace stay there.
@@ -1325,7 +1490,9 @@ namespace umbriel {
     if (layoutBox.width <= 0 || layoutBox.height <= 0) {
       return;
     }
-    wlr_scene_rect_set_color(m_lockBlank, config().colors.backdrop.data());
+    auto color = config().colors.backdrop;
+    color[3] = 1.0F;
+    wlr_scene_rect_set_color(m_lockBlank, color.data());
     wlr_scene_rect_set_size(m_lockBlank, layoutBox.width, layoutBox.height);
     wlr_scene_node_set_position(&m_lockBlank->node, layoutBox.x, layoutBox.y);
   }
@@ -1358,6 +1525,9 @@ namespace umbriel {
     if (m_sessionLocked) {
       updateLockBlank();
       raiseLockTree();
+    }
+    if (m_sessionLock != nullptr) {
+      m_sessionLock->outputsChanged();
     }
     updateOutputManagerConfig();
     refreshSurfaceScales();
@@ -1518,6 +1688,7 @@ namespace umbriel {
     touch->destroy.notify = onTouchDestroy;
     wl_signal_add(&device->events.destroy, &touch->destroy);
     m_cursor->attachInputDevice(device);
+    applyTouchConfig(*touch);
     m_touchDevices.push_back(std::move(touch));
     kLog.info("input: added touch device '{}'", deviceName(device));
   }
@@ -1625,6 +1796,25 @@ namespace umbriel {
     remapTablets();
   }
 
+  void Server::applyTouchConfig(TouchDevice& touch) {
+    if (wlr_input_device_is_libinput(touch.device) == 0) {
+      kLog.debug("input: touch device '{}' is not a libinput device; touch settings skipped", deviceName(touch.device));
+      return;
+    }
+    libinput_device* libinputDevice = wlr_libinput_get_device_handle(touch.device);
+    if (libinputDevice == nullptr) {
+      return;
+    }
+    const Config::Input::Touch& cfg = config().input.touch;
+    if ((libinput_device_config_send_events_get_modes(libinputDevice) & LIBINPUT_CONFIG_SEND_EVENTS_DISABLED) != 0) {
+      libinput_device_config_send_events_set_mode(
+          libinputDevice, cfg.enabled ? LIBINPUT_CONFIG_SEND_EVENTS_ENABLED : LIBINPUT_CONFIG_SEND_EVENTS_DISABLED
+      );
+    } else if (!cfg.enabled) {
+      kLog.warn("input: '{}' cannot be disabled", deviceName(touch.device));
+    }
+  }
+
   void Server::addTabletPad(wlr_input_device* device) {
     auto pad = std::make_unique<TabletPadDevice>();
     pad->server = this;
@@ -1718,6 +1908,16 @@ namespace umbriel {
       }
       wlr_cursor_map_input_to_region(m_cursor->wlr(), tablet->device, &region);
       wlr_cursor_map_input_to_output(m_cursor->wlr(), tablet->device, output);
+    }
+  }
+
+  void Server::remapTouches() {
+    const Config::Input::Touch& cfg = config().input.touch;
+    for (const auto& touch : m_touchDevices) {
+      Output* target = !cfg.mapToOutput.empty()
+          ? outputFromName(cfg.mapToOutput)
+          : defaultTouchOutput(outputs(), wlr_touch_from_input_device(touch->device)->output_name);
+      wlr_cursor_map_input_to_output(m_cursor->wlr(), touch->device, target != nullptr ? target->wlr() : nullptr);
     }
   }
 
@@ -1840,6 +2040,7 @@ namespace umbriel {
     if (!m_cursor->isPassthrough()) {
       m_cursor->resetMode();
     }
+    m_effects.removeOutput(output);
     if (m_insertHint != nullptr && m_insertHint->output() == output) {
       m_insertHint->hideImmediate();
     }
@@ -1881,10 +2082,16 @@ namespace umbriel {
       m_scratchpadManager->releaseOutput(output);
     }
 
+    if (m_sessionLock != nullptr) {
+      m_sessionLock->forgetOutput(output->wlr());
+    }
     std::erase_if(m_outputs, [output](const std::unique_ptr<Output>& entry) { return entry.get() == output; });
     markDirty(Dirty::Banner | Dirty::Cheatsheet | Dirty::QuitConfirm);
     if (m_sessionLocked) {
       updateLockBlank();
+    }
+    if (m_sessionLock != nullptr) {
+      m_sessionLock->outputsChanged();
     }
     updateOutputManagerConfig();
     // Scratchpad and pinned views rehome without going through setWorkspace.
@@ -1951,8 +2158,8 @@ namespace umbriel {
         };
         if (view->floating() && outputBox.width > 0 && outputBox.height > 0) {
           home.floatingOutputPosition = {{
-              static_cast<double>(view->sceneTree()->node.x - outputBox.x) / outputBox.width,
-              static_cast<double>(view->sceneTree()->node.y - outputBox.y) / outputBox.height,
+              static_cast<double>(view->layoutTargetX() - outputBox.x) / outputBox.width,
+              static_cast<double>(view->layoutTargetY() - outputBox.y) / outputBox.height,
           }};
         }
         if (member != capture.members.end()) {
@@ -2538,6 +2745,9 @@ namespace umbriel {
       }
       // Detach wlroots' later destroy listener so it cannot clear the replacement.
       wlr_seat_set_keyboard(seat, replacement);
+      // Publish the replacement keymap before its masks, or neutralize the
+      // pointer-only client before removing the final keyboard capability.
+      m_seat->notifyPointerModifiers(replacement == nullptr);
     }
     if (sourceRemoved) {
       m_keyboardLayoutSource = nullptr;
@@ -2618,6 +2828,7 @@ namespace umbriel {
     if (!self->m_deferOutputManagerConfig) {
       self->updateOutputManagerConfig();
     }
+    self->m_cursor->handleOutputLayoutChange();
   }
 
   void Server::updateOutputManagerConfig() {
@@ -2638,13 +2849,29 @@ namespace umbriel {
     wlr_output_manager_v1_set_configuration(m_outputManager, cfg);
   }
 
-  void Server::applyOutputManagerConfig(wlr_output_configuration_v1* config, bool testOnly) {
+  bool Server::commitOutputEnabled(Output& target, bool enabled) {
+    wlr_output_configuration_v1* config = wlr_output_configuration_v1_create();
+    for (const auto& output : m_outputs) {
+      wlr_output_configuration_head_v1* head = wlr_output_configuration_head_v1_create(config, output->wlr());
+      head->state.enabled = output.get() == &target ? enabled : output->desktopEnabled();
+      const wlr_box box = output->layoutBox();
+      head->state.x = box.x;
+      head->state.y = box.y;
+    }
+    return applyOutputManagerConfig(config, false);
+  }
+
+  bool Server::setOutputEnabled(Output& output, bool enabled) {
+    return output.desktopEnabled() == enabled || commitOutputEnabled(output, enabled);
+  }
+
+  bool Server::applyOutputManagerConfig(wlr_output_configuration_v1* config, bool testOnly) {
     size_t statesLen = 0;
     wlr_backend_output_state* states = wlr_output_configuration_v1_build_state(config, &statesLen);
     if (states == nullptr) {
       wlr_output_configuration_v1_send_failed(config);
       wlr_output_configuration_v1_destroy(config);
-      return;
+      return false;
     }
 
     struct RequestedHead {
@@ -2949,6 +3176,7 @@ namespace umbriel {
     if (commitAttempted) {
       updateOutputManagerConfig();
     }
+    return ok;
   }
 
   void Server::onToplevelCaptureRequest(wl_listener* listener, void* data) {

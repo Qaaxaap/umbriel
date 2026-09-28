@@ -4,6 +4,8 @@
 #include "scene/node.h"
 #include "view/decoration.h"
 #include "view/deferred_unfullscreen.h"
+#include "view/drag_physics.h"
+#include "view/effects.h"
 #include "view/floating.h"
 #include "view/presentation.h"
 #include "view/resize_crossfade.h"
@@ -56,10 +58,16 @@ namespace umbriel {
     [[nodiscard]] const std::optional<std::string>& xdgTag() const { return m_xdgTag; }
     [[nodiscard]] ContentType contentType() const { return m_contentType; }
     // The view's frame: it carries the position, parent, stacking order, and visibility of the whole window. Its
-    // content tree (surfaces, borders, backdrop, blur, and animation shaders) sits at (0, 0) inside it, above the
+    // content tree (surfaces, borders, backdrop, blur, and animation effects) sits at (0, 0) inside it, above the
     // shadow.
     [[nodiscard]] wlr_scene_tree* sceneTree() const { return m_sceneTree; }
-    void syncAnimationShaders(wlr_scene_tree* target = nullptr, wlr_scene_node* border = nullptr);
+    // Refreshes the animation and persistent effect slots on the view's own trees, or on an overview card's `target`,
+    // `border`, and `surface`, gated by `gate` and driven by `cardOutput`.
+    void syncAnimationEffects(
+        wlr_scene_tree* target = nullptr, wlr_scene_node* border = nullptr, wlr_scene_node* surface = nullptr,
+        const BorderEffectGate* gate = nullptr, Output* cardOutput = nullptr
+    );
+    [[nodiscard]] ViewEffects& effects() { return m_effects; }
     [[nodiscard]] wlr_scene_tree* captureTree() const;
     [[nodiscard]] bool mapped() const { return m_mapped; }
     [[nodiscard]] bool xwayland() const { return m_xwayland; }
@@ -110,6 +118,14 @@ namespace umbriel {
     // than under the view's own frame. Overview cards mirror it so they match the window they swap with.
     [[nodiscard]] const wlr_scene_shadow* shadowNode() const { return m_decoration.shadowNode(); }
     [[nodiscard]] bool shadowPooled() const { return m_decoration.shadowPooled(); }
+    // Border colors after this window's rule overrides; overview cards draw with the same ones.
+    [[nodiscard]] const Config::Colors::Border& borderColors() const { return m_decoration.borderColors(); }
+    // Border widths and corner_radius after this window's rule overrides; overview cards draw with the same ones.
+    [[nodiscard]] int decorationBorderWidth() const { return m_decoration.borderWidth(); }
+    [[nodiscard]] int decorationOuterBorderWidth() const { return m_decoration.outerBorderWidth(); }
+    [[nodiscard]] int decorationCornerRadius() const { return m_decoration.cornerRadius(); }
+    // Padding of this window's border preset, 0 without one.
+    [[nodiscard]] int borderEffectPadding() const { return m_effects.borderPadding(); }
     // Opacity multiplier the overview applies to windows it leaves on screen (pinned ones) while it opens and closes.
     void setOverviewOpacity(float opacity);
     [[nodiscard]] wlr_scene_tree* homeTree() const;
@@ -133,8 +149,10 @@ namespace umbriel {
     // they were hidden, so the reveal does not replay the transition.
     void settleFocusChrome();
     void setWorkspace(Workspace* workspace, bool attachToLayout = true);
+    void setWorkspace(Workspace* workspace, bool attachToLayout, LayoutAttachOrigin origin);
     // A move the user asked for: the view belongs where it lands, and any displaced home is dropped.
     void moveToWorkspace(Workspace* workspace, bool attachToLayout = true);
+    void moveToWorkspace(Workspace* workspace, bool attachToLayout, LayoutAttachOrigin origin);
     void detachWorkspace();
 
     // The output, workspace, and layout member to restore after output loss.
@@ -208,8 +226,8 @@ namespace umbriel {
     void setDragPosition(int x, int y);
     // Keep at least clamp(size / 4, 10, 75) pixels per axis on-screen.
     void clampFloatingPosition();
-    // The same clamp for a size that has been requested but not committed yet. The origin animates, so it settles
-    // together with the presented size.
+    // clampFloatingPosition for a requested but uncommitted size, snapping an axis the size fills to the usable edge.
+    // Animates, settling with the presented size.
     void clampFloatingPositionForSize(int width, int height);
     // Send a floating size configure; the pending request is the resize-action basis until committed.
     void requestFloatingSize(int width, int height);
@@ -402,7 +420,9 @@ namespace umbriel {
     // Re-apply compositor-owned opacity to surface buffers. With opaque_fullscreen, fullscreen bypasses window-rule
     // opacity, while fades, drag opacity, focus dimming, and client-provided alpha remain active.
     [[nodiscard]] float effectiveOpacity() const;
-    // A fullscreen window in this state hides everything behind it: it draws over the backdrop and skips blur.
+    // A fullscreen window in this state hides everything behind it: it draws over the backdrop and skips blur. Without
+    // opaque_fullscreen, rule opacity below 1, client alpha below 1, or an opaque region short of the window geometry
+    // lets the desktop show through instead.
     [[nodiscard]] bool fullscreenOpaque() const;
     // The lifecycle fade runs through a whole-window shader, so buffers and borders stay opaque under it.
     [[nodiscard]] bool fadeComposited() const;
@@ -463,7 +483,8 @@ namespace umbriel {
     // True while the border ring exists and is showing. Fullscreen keeps the
     // tree but disables it, so the pointer alone does not answer this.
     [[nodiscard]] bool decorated() const;
-    // Border thickness actually being drawn, 0 when undecorated.
+    // Border thickness actually being drawn, 0 when undecorated. Follows the window's own border_width rule when it
+    // sets one, the global appearance.border_width otherwise.
     [[nodiscard]] int borderInset() const;
     // Radius to round the surface itself by: a fullscreen window is square even
     // though its borders are only hidden, not destroyed.
@@ -479,6 +500,26 @@ namespace umbriel {
     // for the temporary global presentation and its resting presentation.
     void enterDragPresentation();
     void restoreHomePresentation();
+    // Drag physics follows the pointer grab: the grabbed point in frame-local coordinates, then pointer deltas. The
+    // sheet keeps settling after the release. False when the sheet did not take the grab (physics off, or nothing
+    // drawn); the drag then makes none of the calls below.
+    [[nodiscard]] bool beginDragPhysics(double localX, double localY);
+    // The grabbed point moved within the frame (a retarget resized the window under the pointer).
+    void setDragPhysicsGrab(double localX, double localY);
+    void moveDragPhysics(double dx, double dy);
+    void endDragPhysics();
+    // Refits the sheet to the content tree's drawn bounds when they changed, or when the grab moved.
+    void fitDragPhysics(bool grabMoved);
+    struct DragFit {
+      wlr_box bounds;
+      std::array<float, 2> grab;
+    };
+    // The content tree's drawn bounds and the grab as fractions of them; empty when the tree draws nothing.
+    [[nodiscard]] std::optional<DragFit> dragPhysicsFit() const;
+    // The drag slot's expand: the sheet's displacement bound plus a filtering margin.
+    [[nodiscard]] int dragPhysicsExpand() const;
+    // True when the drag slot's drawn box reaches `output`.
+    [[nodiscard]] bool dragPhysicsOn(const Output* output) const;
     // Kick the owning output so an animation started outside a frame gets ticked.
     void scheduleFrame();
     void cancelSizeAnimation();
@@ -497,9 +538,10 @@ namespace umbriel {
     void finishFloatingResize();
     void syncFloatingResizePosition();
     void adoptFloatingClientSize();
-    // Where `origin` has to move so a float of `width` by `height` keeps its on-screen margin, or nullopt when the
-    // clamp does not apply or the origin already satisfies it.
-    [[nodiscard]] std::optional<FloatingPoint> floatingClampTarget(FloatingPoint origin, int width, int height);
+    // Where `origin` has to move to satisfy the clamp, or nullopt if it already does. `resize` selects
+    // clampFloatingOriginForResize over clampFloatingOrigin.
+    [[nodiscard]] std::optional<FloatingPoint>
+    floatingClampTarget(FloatingPoint origin, int width, int height, bool resize);
     std::optional<FloatingPoint> getFloatingPosition(
         const wlr_box usable, const std::optional<WindowPosition>& position = std::nullopt,
         const std::optional<std::array<int, 2>> size = std::nullopt
@@ -602,8 +644,16 @@ namespace umbriel {
     // must never sample the composited desktop behind translucent content.
     wlr_scene* m_captureScene = nullptr;
     ViewDecoration m_decoration;
+    ViewEffects m_effects;
     ViewPresentation m_presentation;
     ResizeCrossfade m_resizeCrossfade;
+    DragPhysics m_dragPhysics;
+    uint64_t m_dragPhysicsMsec = 0; // animation clock at the sheet's last tick
+    // The frame-local grab and the content tree's drawn bounds the sheet was last fitted to.
+    double m_dragGrabX = 0;
+    double m_dragGrabY = 0;
+    wlr_box m_dragBounds{};
+    bool m_dragSlotBound = false; // the content tree carries the drag slot
     wlr_box m_presentedBox{};
     // Last unscaled box supplied by the workspace. A tiled popin or zoom presents an inset inside this logical box,
     // so a later layout change must animate from the logical box rather than scaling the inset a second time.
@@ -626,6 +676,8 @@ namespace umbriel {
     // only through the first root commit after the opening gate.
     bool m_consumeRestoredMaximizeRequest = false;
     wl_event_source* m_acceptClientMaximizeIdle = nullptr;
+    // Configure serial whose acknowledgement opens the gate when one was outstanding after the map dispatch.
+    std::optional<uint32_t> m_acceptClientMaximizeSerial;
     bool m_xwayland = false;
     // False until the first setPosition/animateTo places the node; the initial
     // placement snaps (avoids animating from the default (0,0) world origin).
@@ -655,6 +707,8 @@ namespace umbriel {
     bool m_pinned = false;
     bool m_restoreTiledAfterUnpin = false;
     bool m_restorePinnedAfterFullscreen = false;
+    // The toplevel's fullscreen state as of its last commit, so the commit that leaves fullscreen can be detected.
+    bool m_committedFullscreen = false;
     // Set when a float toggle drops fullscreen: re-tiling restores fullscreen BEFORE the layout attach, so the client
     // never receives a transient column-sized configure (game engines latch it for input mapping and go dead outside
     // it). Cleared whenever fullscreen is left by any other path, so a client that chose windowed mode while floating

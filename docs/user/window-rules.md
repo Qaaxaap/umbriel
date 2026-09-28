@@ -103,8 +103,8 @@ default_scratchpad = "terminal"
 ```
 
 With no named definitions, use `"default"`. A hidden scratchpad keeps the new
-window hidden. Output, workspace, and floating rules determine where and how it
-returns when restored.
+window hidden unless `default_focused = true` is also set. Output, workspace,
+and floating rules determine where and how it returns when restored.
 
 ## Workspace placement
 
@@ -152,10 +152,63 @@ and sets its extent.
 | `vrr` | Override the focused output's VRR policy. |
 | `tearing` | Request or veto asynchronous presentation. |
 | `hdr` | Override the focused output's HDR policy. |
+| `border_color_focused` | Override `colors.border.focused`. |
+| `border_color_unfocused` | Override `colors.border.unfocused`. |
+| `border_color_outer` | Override `colors.border.outer`. |
+| `border_width` | Override `appearance.border_width`, 0 to 100. |
+| `outer_border_width` | Override `appearance.outer_border_width`, 0 to 100. |
+| `corner_radius` | Override `appearance.corner_radius`, 0 to 100. |
+| `shadow` | Override `appearance.shadow.enabled`. |
+| `border_effect` | Replace `effects.border` by name, or `"off"` to disable it. |
+| `window_effect` | Replace `effects.window` by name, or `"off"` to disable it. |
 
 These values refresh when matching identity or state changes. Fullscreen
 bypasses rule opacity unless
 [`appearance.opaque_fullscreen`](appearance.md#window-appearance) is `false`.
+
+### Border colors
+
+Each `border_color_*` key is independent: an unset key keeps the
+[`[colors.border]`](appearance.md#border-colors) color. Combined with the state
+selectors, they tell floating, pinned, or scratchpad windows apart:
+
+```toml
+[[window_rule]]
+match.is_scratchpad = true
+border_color_focused = "#E5C07BFF"
+border_color_unfocused = "#5C4A2AFF"
+```
+
+### Decoration
+
+`border_width`, `outer_border_width`, `corner_radius`, and `shadow` change what
+Umbriel draws around the windows a rule matches. Layout spacing keeps using the
+global border widths, so a rule never moves other windows: a thinner border
+leaves its gap empty, and a thicker one draws into the gap. The shadow's
+softness, offsets, and color stay global.
+
+An application that draws its own rounded corners and shadow looks best
+without Umbriel's:
+
+```toml
+[[window_rule]]
+match.app_id = "^org[.]gnome[.]TextEditor$"
+border_width = 0
+corner_radius = 0
+shadow = false
+```
+
+### Effects
+
+```toml
+[[window_rule]]
+match.app_id = "^mpv$"
+border_effect = "off"
+window_effect = "scanlines"
+```
+
+Names refer to `[effects.preset.<name>]` tables of the matching kind. See
+[Effects](effects.md#turn-a-default-off-for-one-window-or-output).
 
 ## The only window in the workspace
 
@@ -170,7 +223,8 @@ default_maximize = true
 
 It can apply fullscreen, maximize-to-edges, maximize, or a scrolling extent.
 The effect is removed when another tiled window appears and restored when the
-window becomes alone again.
+window becomes alone again. A window that opens with `default_pinned = true`
+opens floating, so it never opens in the alone state.
 
 Combine it with other selectors when only one application should receive the
 behavior:

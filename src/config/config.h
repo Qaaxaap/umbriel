@@ -1,6 +1,6 @@
 #pragma once
-#include "config/animation_shader.h"
 #include "config/config_diag.h"
+#include "config/effects.h"
 #include "config/keybind_parse.h"
 #include "config/value_parse.h"
 #include "core/animation.h"
@@ -36,6 +36,16 @@ namespace umbriel {
     Shift,
   };
 
+  // Which kinds of joining window are allowed to push a fullscreen window out of
+  // fullscreen (new_exits_fullscreen). A bitmask so any combination is expressible.
+  enum class FullscreenExitScope : uint8_t {
+    None = 0,
+    Tiled = 1 << 0,
+    Floating = 1 << 1,
+    Pinned = 1 << 2,
+    All = Tiled | Floating | Pinned,
+  };
+
   struct AccelProfile {
     enum class Kind {
       Flat,
@@ -53,6 +63,7 @@ namespace umbriel {
     std::optional<int> gap;
     LayoutStrutOverrides struts;
     std::optional<std::vector<double>> extentPresets;
+    std::optional<FullscreenExitScope> newExitsFullscreen;
     struct Scrolling {
       std::optional<double> defaultExtentFraction;
       std::optional<bool> centerUnderfullStrip;
@@ -61,14 +72,12 @@ namespace umbriel {
     } scrolling;
     struct Dwindle {
       std::optional<bool> preserveSplit;
-      std::optional<bool> newExitsFullscreen;
       bool operator==(const Dwindle&) const = default;
     } dwindle;
     struct Master {
       std::optional<double> defaultWidthFraction;
       std::optional<bool> newOnTop;
       std::optional<bool> newBecomesMaster;
-      std::optional<bool> newExitsFullscreen;
       std::optional<MasterPosition> position;
       bool operator==(const Master&) const = default;
     } master;
@@ -90,6 +99,7 @@ namespace umbriel {
   // implicit scratchpad named "default" instead.
   struct ScratchpadConfig {
     std::string name;
+    std::string spawnWhenEmpty;
     bool operator==(const ScratchpadConfig&) const = default;
   };
 
@@ -99,6 +109,7 @@ namespace umbriel {
     int gap = 8;
     LayoutStruts struts;
     std::vector<double> extentPresets{1.0 / 3, 0.5, 2.0 / 3};
+    FullscreenExitScope newExitsFullscreen = FullscreenExitScope::None;
     struct Scrolling {
       std::optional<double> defaultExtentFraction;
       bool centerUnderfullStrip = true;
@@ -109,14 +120,12 @@ namespace umbriel {
     } scrolling;
     struct Dwindle {
       bool preserveSplit = false;
-      bool newExitsFullscreen = false;
       bool operator==(const Dwindle&) const = default;
     } dwindle;
     struct Master {
       double defaultWidthFraction = 0.55;
       bool newOnTop = true;
       bool newBecomesMaster = false;
-      bool newExitsFullscreen = false;
       MasterPosition position = MasterPosition::Left;
       bool operator==(const Master&) const = default;
     } master;
@@ -159,6 +168,12 @@ namespace umbriel {
   enum class ClickMethod : uint8_t {
     ButtonAreas,
     ClickFinger,
+  };
+
+  // Which buttons one-, two-, and three-finger taps produce.
+  enum class TapButtonMap : uint8_t {
+    LeftRightMiddle,
+    LeftMiddleRight,
   };
 
   enum class WindowDragToggle : uint8_t {
@@ -220,6 +235,9 @@ namespace umbriel {
     bool directScanout = true;
     HdrMode hdr = HdrMode::Off;
     float sdrWhite = 203.0F;
+    std::optional<std::string> screenEffect; // "off" disables the default
+    // Render bit depth for SDR output: 8 (default) or 10 for 10-bit SDR.
+    int bitDepth = 8;
     // Explicit workspace inventory. A count creates anonymous positional
     // members, while a string list creates named members. Omitted is dynamic.
     using WorkspaceInventory = std::variant<size_t, std::vector<std::string>>;
@@ -227,6 +245,10 @@ namespace umbriel {
     // Smallest workspace count a dynamic output keeps. Rejected alongside an
     // explicit inventory, which already states an exact count.
     int minWorkspaces = 1;
+    // Wrap a workspace step around the ends of the inventory instead of stopping
+    // there: workspace-next/previous and the window and column move variants that
+    // name a step.
+    bool cyclicWorkspaces = false;
     // Direction this output's workspaces are arranged along. Scrolling layouts on
     // it scroll perpendicular to this.
     WorkspaceAxis workspaceAxis = WorkspaceAxis::Vertical;
@@ -336,6 +358,19 @@ namespace umbriel {
     std::optional<bool> blurPopups;
     std::optional<double> blurIgnoreAlpha;
     std::optional<bool> blurOptimized;
+    // Overrides [colors.border] for windows this rule matches.
+    std::optional<std::array<float, 4>> borderColorFocused;
+    std::optional<std::array<float, 4>> borderColorUnfocused;
+    std::optional<std::array<float, 4>> borderColorOuter;
+    // Override [appearance] border_width, outer_border_width, corner_radius, and shadow.enabled for windows this rule
+    // matches.
+    std::optional<int> borderWidth;
+    std::optional<int> outerBorderWidth;
+    std::optional<int> cornerRadius;
+    std::optional<bool> shadow;
+    // Override [effects] border and window for windows this rule matches; "off" disables the default.
+    std::optional<std::string> borderEffect;
+    std::optional<std::string> windowEffect;
 
     // The compiled regexes are derived from the app ID, title, and XDG tag patterns and
     // are not comparable, so equality is decided by the patterns themselves.
@@ -376,7 +411,16 @@ namespace umbriel {
           && blur == other.blur
           && blurPopups == other.blurPopups
           && blurIgnoreAlpha == other.blurIgnoreAlpha
-          && blurOptimized == other.blurOptimized;
+          && blurOptimized == other.blurOptimized
+          && borderColorFocused == other.borderColorFocused
+          && borderColorUnfocused == other.borderColorUnfocused
+          && borderColorOuter == other.borderColorOuter
+          && borderWidth == other.borderWidth
+          && outerBorderWidth == other.outerBorderWidth
+          && cornerRadius == other.cornerRadius
+          && shadow == other.shadow
+          && borderEffect == other.borderEffect
+          && windowEffect == other.windowEffect;
     }
   };
 
@@ -409,6 +453,15 @@ namespace umbriel {
     std::optional<bool> blurPopups;
     std::optional<double> blurIgnoreAlpha;
     std::optional<bool> blurOptimized;
+    std::optional<std::array<float, 4>> borderColorFocused;
+    std::optional<std::array<float, 4>> borderColorUnfocused;
+    std::optional<std::array<float, 4>> borderColorOuter;
+    std::optional<int> borderWidth;
+    std::optional<int> outerBorderWidth;
+    std::optional<int> cornerRadius;
+    std::optional<bool> shadow;
+    std::optional<std::string> borderEffect;
+    std::optional<std::string> windowEffect;
     bool operator==(const ResolvedWindowRule&) const = default;
   };
 
@@ -477,8 +530,6 @@ namespace umbriel {
       struct Border {
         std::array<float, 4> focused{0.4784314F, 0.6392157F, 1.0F, 1.0F};
         std::array<float, 4> unfocused{0.1607843F, 0.1607843F, 0.2F, 1.0F};
-        std::array<float, 4> scratchpadFocused{0.8980392F, 0.7529412F, 0.4823529F, 1.0F};
-        std::array<float, 4> scratchpadUnfocused{0.3607843F, 0.2901961F, 0.1647059F, 1.0F};
         // No focus variant.
         std::array<float, 4> outer{0.1019608F, 0.1019608F, 0.1215686F, 1.0F};
         bool operator==(const Border&) const = default;
@@ -501,7 +552,8 @@ namespace umbriel {
       int outerBorderWidth = 0;
       int cornerRadius = 10;
       double dragOpacity = 0.75;
-      // Fullscreen windows ignore window rule opacity and draw over the backdrop.
+      // Fullscreen windows ignore window rule opacity and draw over the backdrop. When false, a fullscreen window with
+      // rule or client transparency shows the desktop instead.
       bool opaqueFullscreen = true;
       struct Blur {
         bool enabled = true;
@@ -535,7 +587,7 @@ namespace umbriel {
       std::map<std::string, SpringConfig> springs;
 
       struct WindowsIn {
-        std::optional<AnimationShaderSource> shader;
+        std::string effect;
         bool enabled = true;
         // Springs derive their own length; duration_ms stays at the shared value for a duration-based curve.
         int durationMs = 250;
@@ -546,7 +598,7 @@ namespace umbriel {
       } windowsIn;
 
       struct WindowsOut {
-        std::optional<AnimationShaderSource> shader;
+        std::string effect;
         bool enabled = true;
         int durationMs = 250;
         AnimationCurve curve{.easing = Easing::Spring, .spring = {.damping = 1.0, .stiffness = 1400.0}};
@@ -556,7 +608,7 @@ namespace umbriel {
       } windowsOut;
 
       struct WindowsMove {
-        std::optional<AnimationShaderSource> shader;
+        std::string effect;
         bool enabled = true;
         int durationMs = 250;
         AnimationCurve curve{.easing = Easing::Spring, .spring = {.damping = 1.0, .stiffness = 900.0}};
@@ -564,7 +616,7 @@ namespace umbriel {
       } windowsMove;
 
       struct Workspaces {
-        std::optional<AnimationShaderSource> shader;
+        std::string effect;
         bool enabled = true;
         int durationMs = 250;
         AnimationCurve curve{.easing = Easing::Spring, .spring = {.damping = 1.0, .stiffness = 800.0}};
@@ -572,7 +624,7 @@ namespace umbriel {
       } workspaces;
 
       struct Overview {
-        std::optional<AnimationShaderSource> shader;
+        std::string effect;
         bool enabled = true;
         int durationMs = 250;
         AnimationCurve curve{.easing = Easing::Spring, .spring = {.damping = 1.0, .stiffness = 800.0}};
@@ -584,7 +636,7 @@ namespace umbriel {
       } overview;
 
       struct Scratchpad {
-        std::optional<AnimationShaderSource> shader;
+        std::string effect;
         bool enabled = true;
         int durationMs = 250;
         AnimationCurve curve{.easing = Easing::Spring, .spring = {.damping = 1.0, .stiffness = 800.0}};
@@ -597,7 +649,7 @@ namespace umbriel {
       } scratchpad;
 
       struct Border {
-        std::optional<AnimationShaderSource> shader;
+        std::string effect;
         bool enabled = true;
         int durationMs = 250;
         AnimationCurve curve{.easing = Easing::Spring, .spring = {.damping = 1.0, .stiffness = 900.0}};
@@ -605,7 +657,7 @@ namespace umbriel {
       } border;
 
       struct DimUnfocused {
-        std::optional<AnimationShaderSource> shader;
+        std::string effect;
         bool enabled = false;
         int durationMs = 250;
         AnimationCurve curve{.easing = Easing::EaseOutCubic};
@@ -614,15 +666,57 @@ namespace umbriel {
       } dimUnfocused;
 
       struct Layers {
-        std::optional<AnimationShaderSource> shader;
+        std::string effect;
         bool enabled = false;
         int durationMs = 250;
         AnimationCurve curve{.easing = Easing::EaseOutCubic};
         bool operator==(const Layers&) const = default;
       } layers;
 
+      struct WindowsDrag {
+        // Deform the window like an elastic sheet while it is dragged by the pointer.
+        bool physics = false;
+        bool operator==(const WindowsDrag&) const = default;
+      } windowsDrag;
+
+      // The preset an event names through `effect =` and whether the event is enabled. `effect` is null for slots
+      // without a config event.
+      struct EventEffect {
+        const std::string* effect = nullptr;
+        bool enabled = false;
+      };
+      [[nodiscard]] EventEffect eventEffect(AnimationEvent event) const {
+        switch (event) {
+        case AnimationEvent::WindowsIn:
+          return {&windowsIn.effect, windowsIn.enabled};
+        case AnimationEvent::WindowsOut:
+          return {&windowsOut.effect, windowsOut.enabled};
+        case AnimationEvent::WindowsMove:
+          return {&windowsMove.effect, windowsMove.enabled};
+        case AnimationEvent::Workspaces:
+          return {&workspaces.effect, workspaces.enabled};
+        case AnimationEvent::Overview:
+          return {&overview.effect, overview.enabled};
+        case AnimationEvent::Scratchpad:
+          return {&scratchpad.effect, scratchpad.enabled};
+        case AnimationEvent::Border:
+          return {&border.effect, border.enabled};
+        case AnimationEvent::DimUnfocused:
+          return {&dimUnfocused.effect, dimUnfocused.enabled};
+        case AnimationEvent::Layers:
+          return {&layers.effect, layers.enabled};
+        case AnimationEvent::Window:
+        case AnimationEvent::Overlay:
+        case AnimationEvent::BorderEffect:
+        case AnimationEvent::Drag:
+          return {};
+        }
+        return {};
+      }
+
       bool operator==(const Animation&) const = default;
     } animation;
+    Effects effects;
 
     struct Overview {
       // Workspace scale when fully zoomed out.
@@ -664,6 +758,7 @@ namespace umbriel {
       int gap = 8;
       LayoutStruts struts;
       std::vector<double> extentPresets{1.0 / 3, 0.5, 2.0 / 3};
+      FullscreenExitScope newExitsFullscreen = FullscreenExitScope::None;
       struct Scrolling {
         std::optional<double> defaultExtentFraction;
         bool centerUnderfullStrip = true;
@@ -672,14 +767,12 @@ namespace umbriel {
       } scrolling;
       struct Dwindle {
         bool preserveSplit = false;
-        bool newExitsFullscreen = false;
         bool operator==(const Dwindle&) const = default;
       } dwindle;
       struct Master {
         double defaultWidthFraction = 0.55;
         bool newOnTop = true;
         bool newBecomesMaster = false;
-        bool newExitsFullscreen = false;
         MasterPosition position = MasterPosition::Left;
         bool operator==(const Master&) const = default;
       } master;
@@ -697,6 +790,13 @@ namespace umbriel {
       bool emptyAbove = false;
       bool operator==(const Workspaces&) const = default;
     } workspaces;
+
+    struct ScreenCast {
+      // Allow target-changing actions immediately. By default, the first such
+      // action during a share requires explicit confirmation.
+      bool disableDynamicConfirmation = false;
+      bool operator==(const ScreenCast&) const = default;
+    } screenCast;
 
     struct General {
       std::vector<std::string> autostart;
@@ -740,6 +840,9 @@ namespace umbriel {
       // Advertise and accept the primary-selection clipboard used for
       // middle-click paste.
       bool middleClickPaste = true;
+      // Let a client start an interactive move from its own drag area
+      // (xdg_toplevel.move), such as a CSD title bar or Chromium tab strip.
+      bool clientWindowDrag = true;
       // Retarget an interactive window drag with the free mouse button: float
       // it, pin it, or leave the drag alone.
       WindowDragToggle windowDragToggle = WindowDragToggle::None;
@@ -763,6 +866,7 @@ namespace umbriel {
       struct Touchpad {
         std::optional<bool> tap = true;
         std::optional<bool> naturalScroll;
+        std::optional<bool> leftHanded;
         std::optional<AccelProfile> accelProfile;
         std::optional<double> sensitivity;
         // Touchpad scroll speed multiplier. `scroll_factor` is either one number
@@ -778,11 +882,13 @@ namespace umbriel {
         std::optional<bool> disableWhileTyping;
         std::optional<bool> disableOnExternalMouse;
         std::optional<ClickMethod> clickMethod;
+        std::optional<TapButtonMap> tapButtonMap;
         bool operator==(const Touchpad&) const = default;
       } touchpad;
 
       struct Mouse {
         std::optional<bool> naturalScroll;
+        std::optional<bool> leftHanded;
         std::optional<AccelProfile> accelProfile;
         // Evdev BTN_* code libinput turns into a scroll modifier: holding it makes pointer motion scroll instead of
         // clicking. Unset leaves the device's libinput default alone.
@@ -824,6 +930,13 @@ namespace umbriel {
         bool operator==(const Tablet&) const = default;
       } tablet;
 
+      struct Touch {
+        bool enabled = true;
+        // empty = no static output mapping
+        std::string mapToOutput;
+        bool operator==(const Touch&) const = default;
+      } touch;
+
       struct Device {
         std::string name;
         std::optional<std::string> layout;
@@ -833,10 +946,12 @@ namespace umbriel {
         std::optional<int> repeatDelay;
         std::optional<bool> tap;
         std::optional<bool> naturalScroll;
+        std::optional<bool> leftHanded;
         std::optional<AccelProfile> accelProfile;
         std::optional<double> sensitivity;
         std::optional<bool> disableWhileTyping;
         std::optional<ClickMethod> clickMethod;
+        std::optional<TapButtonMap> tapButtonMap;
         std::optional<uint32_t> scrollButton;
         std::optional<bool> scrollButtonLock;
         bool operator==(const Device&) const = default;
@@ -876,6 +991,11 @@ namespace umbriel {
 
     bool operator==(const Config&) const = default;
   };
+
+  // Palette order shaders see through umbriel_palette_at: accent_primary, accent_secondary, warning, error.
+  [[nodiscard]] inline std::array<std::array<float, 4>, 4> effectPalette(const Config::Colors& colors) {
+    return {colors.accentPrimary, colors.accentSecondary, colors.warning, colors.error};
+  }
 
   [[nodiscard]] const Config& config();
   [[nodiscard]] bool loadConfig(const char* explicitPath);

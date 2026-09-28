@@ -211,12 +211,18 @@ namespace umbriel {
         {"layout-scroll-left", "", "Scroll the strip toward its start", KeybindAction::LayoutScrollLeft},
         {"layout-scroll-right", "", "Scroll the strip toward its end", KeybindAction::LayoutScrollRight},
         {"layout-scroll-up", "", "Scroll the strip toward its start", KeybindAction::LayoutScrollUp},
+        {"output-disable", "<output>", "Remove an output from the desktop", KeybindAction::OutputDisable,
+         ActionArgKind::Output},
+        {"output-enable", "<output>", "Add an output to the desktop", KeybindAction::OutputEnable,
+         ActionArgKind::Output},
         {"output-focus-down", "", "Focus the output below", KeybindAction::OutputFocusDown},
         {"output-focus-left", "", "Focus the output to the left", KeybindAction::OutputFocusLeft},
         {"output-focus-next", "", "Focus the next output, wrapping around", KeybindAction::OutputFocusNext},
         {"output-focus-previous", "", "Focus the previous output, wrapping around", KeybindAction::OutputFocusPrevious},
         {"output-focus-right", "", "Focus the output to the right", KeybindAction::OutputFocusRight},
         {"output-focus-up", "", "Focus the output above", KeybindAction::OutputFocusUp},
+        {"output-toggle", "<output>", "Add or remove an output from the desktop", KeybindAction::OutputToggle,
+         ActionArgKind::Output},
         {"overview-close", "", "Close the workspace overview", KeybindAction::OverviewClose},
         {"overview-open", "", "Open the workspace overview", KeybindAction::OverviewOpen},
         {"overview-toggle", "", "Open or close the workspace overview", KeybindAction::OverviewToggle},
@@ -224,6 +230,15 @@ namespace umbriel {
          KeybindAction::ScratchpadFocusNext, ActionArgKind::OptionalScratchpad},
         {"scratchpad-toggle", "[<scratchpad>]", "Show or hide the selected scratchpad windows",
          KeybindAction::ScratchpadToggle, ActionArgKind::OptionalScratchpad},
+        {"screencast-clear", "", "Pause the screencast and stop following", KeybindAction::ScreenCastClear},
+        {"screencast-follow-output", "", "Follow the focused output", KeybindAction::ScreenCastFollowOutput},
+        {"screencast-follow-stop", "", "Stop following and keep the current target",
+         KeybindAction::ScreenCastFollowStop},
+        {"screencast-follow-window", "", "Follow the focused window", KeybindAction::ScreenCastFollowWindow},
+        {"screencast-set-output", "[<output>]", "Share the focused output, or the selected output",
+         KeybindAction::ScreenCastSetOutput, ActionArgKind::OptionalOutput},
+        {"screencast-set-window", "[<window-id>]", "Share the focused window, or the selected window",
+         KeybindAction::ScreenCastSetWindow, ActionArgKind::OptionalWindowId},
         {"session-quit", "[skip-confirmation]", "Quit the session, confirming first unless told to skip",
          KeybindAction::SessionQuit, ActionArgKind::SkipConfirmation},
         {"shortcuts-inhibit-toggle", "", "Toggle shortcuts inhibition for the focused surface",
@@ -250,8 +265,8 @@ namespace umbriel {
          KeybindAction::WindowCycleSecondaryExtent},
         {"window-cycle-secondary-extent-back", "", "Cycle the secondary extent presets in reverse",
          KeybindAction::WindowCycleSecondaryExtentBack},
-        {"window-focus", "<window-id>", "Focus the given window", KeybindAction::WindowFocusId,
-         ActionArgKind::WindowId},
+        {"window-focus", "<window-id>", "Focus a window, revealing it from a hidden scratchpad",
+         KeybindAction::WindowFocusId, ActionArgKind::WindowId},
         {"window-focus-down", "", "Focus the next window down in the column", KeybindAction::WindowFocusDown},
         {"window-focus-last", "", "Focus the previously focused window", KeybindAction::WindowFocusLast},
         {"window-focus-left", "", "Focus the window to the left", KeybindAction::WindowFocusLeft},
@@ -273,7 +288,7 @@ namespace umbriel {
         {"window-focus-switch-floating", "", "Focus the last window of the opposite floating state",
          KeybindAction::WindowFocusSwitchFloating},
         {"window-focus-up", "", "Focus the next window up in the column", KeybindAction::WindowFocusUp},
-        {"window-focus-warp", "<window-id>", "Focus the given window and warp the cursor to it",
+        {"window-focus-warp", "<window-id>", "Focus or reveal a window and warp the cursor to it",
          KeybindAction::WindowFocusWarpId, ActionArgKind::WindowId},
         {"window-modify-height-down", "<delta>", "Resize the focused window from its bottom edge",
          KeybindAction::WindowModifyHeightDown, ActionArgKind::FractionDelta},
@@ -320,6 +335,13 @@ namespace umbriel {
          KeybindAction::WindowMoveToWorkspaceNext},
         {"window-move-to-workspace-previous", "", "Move the focused window to the previous workspace",
          KeybindAction::WindowMoveToWorkspacePrevious},
+        {"window-move-to-workspace-silent", "<workspace>[/<output>]",
+         "Move the focused window to the selected workspace silently", KeybindAction::WindowMoveToWorkspaceSilent,
+         ActionArgKind::Workspace},
+        {"window-move-to-workspace-silent-next", "", "Move the focused window to the next workspace silently",
+         KeybindAction::WindowMoveToWorkspaceSilentNext},
+        {"window-move-to-workspace-silent-previous", "", "Move the focused window to the previous workspace silently",
+         KeybindAction::WindowMoveToWorkspaceSilentPrevious},
         {"window-move-up", "", "Move the focused window up in its column", KeybindAction::WindowMoveUp},
         {"window-restore-from-scratchpad", "[<scratchpad>]", "Return a scratchpad window to its saved workspace",
          KeybindAction::WindowRestoreFromScratchpad, ActionArgKind::OptionalScratchpad},
@@ -537,6 +559,13 @@ namespace umbriel {
         output.payload = std::move(workspace);
         return true;
       }
+      case ActionArgKind::Output:
+        if (takeActionArg(value, spec, arg)) {
+          output.action = spec.action;
+          output.payload = OutputArg{.output = std::string(arg)};
+          return true;
+        }
+        break;
       case ActionArgKind::OptionalOutput:
         if (value == spec.name) {
           output.action = spec.action;
@@ -626,17 +655,18 @@ namespace umbriel {
     keybinds.reserve(60);
     // Built by assignment rather than aggregate initialisation: the trigger and payload fields already carry default
     // member initialisers, and naming every one of them just to satisfy -Wmissing-field-initializers is noise.
-    auto add = [&keybinds](KeybindAction action, uint32_t keysym, uint32_t modifiers = 0) {
+    auto add = [&keybinds](KeybindAction action, uint32_t keysym, uint32_t modifiers = 0) -> Keybind& {
       Keybind bind;
       bind.modifiers = modifiers;
       bind.useMod = true;
       bind.keysym = xkb_keysym_to_lower(keysym);
       bind.action = action;
-      keybinds.push_back(std::move(bind));
+      return keybinds.emplace_back(std::move(bind));
     };
 
     add(KeybindAction::SessionQuit, XKB_KEY_Escape);
-    add(KeybindAction::WindowClose, XKB_KEY_q);
+    // Holding close would also close each window that focus moves to.
+    add(KeybindAction::WindowClose, XKB_KEY_q).repeat = false;
     add(KeybindAction::WindowFocusNext, XKB_KEY_F1);
 
     add(KeybindAction::WindowFocusLeft, XKB_KEY_Left);
@@ -666,15 +696,8 @@ namespace umbriel {
     add(KeybindAction::ToggleMaximizeToEdges, XKB_KEY_m);
     add(KeybindAction::ToggleFloating, XKB_KEY_t);
     add(KeybindAction::TogglePinned, XKB_KEY_p);
-    // Overview must not repeat: holding the key would thrash open/close.
-    {
-      Keybind overview;
-      overview.useMod = true;
-      overview.keysym = XKB_KEY_o;
-      overview.repeat = false;
-      overview.action = KeybindAction::OverviewToggle;
-      keybinds.push_back(std::move(overview));
-    }
+    // Holding the overview key would thrash open/close.
+    add(KeybindAction::OverviewToggle, XKB_KEY_o).repeat = false;
 
     for (int index = 0; index < 9; ++index) {
       const uint32_t digit = XKB_KEY_1 + static_cast<uint32_t>(index);

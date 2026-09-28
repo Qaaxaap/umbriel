@@ -3,13 +3,15 @@
 unit_tests = [
   ['overview-navigation', ['unit/overview_navigation.cpp'], []],
   ['gesture-physics', ['unit/gesture_physics.cpp'], []],
+  ['overview-preview-geometry', ['unit/overview_preview_geometry.cpp'], [umbriel_core_dep]],
   ['presented-crop', ['unit/presented_crop.cpp'], []],
   ['scene-node', ['unit/scene_node.cpp'], []],
   ['scene-clip', ['unit/scene_clip.cpp'], [wayland_server_dep]],
   ['presentation', ['unit/presentation.cpp'], [umbriel_core_dep]],
   ['animation', ['unit/animation.cpp'], [umbriel_core_dep]],
   ['application-scope', ['unit/application_scope.cpp'], [umbriel_core_dep], [], ['-Wl,--wrap=close_range']],
-  ['animation-shader', ['unit/animation_shader.cpp'], []],
+  ['shader-source', ['unit/shader_source.cpp'], []],
+  ['effects', ['unit/effects.cpp'], []],
   ['window-opacity-blur', ['unit/window_opacity_blur.cpp'], [umbriel_core_dep]],
   ['value-parse', ['unit/value_parse.cpp'], []],
   ['keybind-parse', ['unit/keybind_parse.cpp'], []],
@@ -21,7 +23,9 @@ unit_tests = [
   ['output-identity', ['unit/output_identity.cpp'], []],
   ['output-mode-selection', ['unit/output_mode_selection.cpp'], []],
   ['output-frame-schedule', ['unit/output_frame_schedule.cpp'], []],
+  ['output-format-sequence', ['unit/output_format_sequence.cpp'], []],
   ['hdr-format', ['unit/hdr_format.cpp'], []],
+  ['sdr-format', ['unit/sdr_format.cpp'], []],
   ['layout-struts', ['unit/layout_struts.cpp'], []],
   ['layout-motion', ['unit/layout_motion.cpp'], []],
   ['scrolling-layout', ['unit/scrolling_layout.cpp'], []],
@@ -31,16 +35,21 @@ unit_tests = [
   ['shortcut-labels', ['unit/shortcut_labels.cpp'], []],
   ['border-ring', ['unit/border_ring.cpp'], []],
   ['floating', ['unit/floating.cpp'], []],
+  ['drag-physics', ['unit/drag_physics.cpp'], []],
   ['preset-cycle', ['unit/preset_cycle.cpp'], []],
   ['maximize', ['unit/maximize.cpp'], []],
   ['deferred-unfullscreen', ['unit/deferred_unfullscreen.cpp'], []],
   ['config-section', ['unit/config_section.cpp'], []],
   ['config-change', ['unit/config_change.cpp'], []],
+  ['config-schema', ['unit/config_schema.cpp'], [umbriel_core_dep]],
   [
     'config-load',
     ['unit/config_load.cpp'],
     [umbriel_core_dep],
-    ['-DUMBRIEL_EXAMPLE_CONFIG="' + meson.project_source_root() / 'examples/config.toml' + '"'],
+    [
+      '-DUMBRIEL_EXAMPLE_CONFIG="' + meson.project_source_root() / 'examples/config.toml' + '"',
+      '-DUMBRIEL_SOURCE_ROOT="' + meson.project_source_root() + '"',
+    ],
   ],
   ['drm-policy', ['unit/drm_policy.cpp'], []],
   ['config-watcher', ['unit/config_watcher.cpp'], [umbriel_core_dep]],
@@ -99,6 +108,19 @@ pointer_client = executable(
     virtual_pointer_client_c,
     virtual_keyboard_client_h,
     virtual_keyboard_client_c,
+  ],
+  dependencies: [wayland_client_dep, xkbcommon_dep],
+)
+
+pointer_modifiers_client = executable(
+  'pointer-modifiers-client',
+  [
+    'harness/clients/pointer_modifiers_client.cpp',
+    input_method_client_h, input_method_client_c,
+    ext_session_lock_client_h, ext_session_lock_client_c,
+    virtual_pointer_client_h, virtual_pointer_client_c,
+    virtual_keyboard_client_h, virtual_keyboard_client_c,
+    layer_shell_client_h, layer_shell_client_c, xdg_shell_client_c,
   ],
   dependencies: [wayland_client_dep, xkbcommon_dep],
 )
@@ -297,6 +319,8 @@ seat_log_client = executable(
     xdg_foreign_client_c,
     keyboard_shortcuts_inhibit_client_h,
     keyboard_shortcuts_inhibit_client_c,
+    text_input_client_h,
+    text_input_client_c,
   ],
   dependencies: [wayland_client_dep],
 )
@@ -313,8 +337,19 @@ output_management_client = executable(
   dependencies: [wayland_client_dep],
 )
 
+# Harness helper that counts, bounds, and samples screenshot pixels for checks.
+pixel_probe = executable(
+  'pixel-probe',
+  ['harness/clients/pixel_probe.cpp'],
+  dependencies: [cairo_dep],
+  # Checks call it for every captured frame; a debug build of the per-pixel loop would cost more than the capture.
+  override_options: ['optimization=2'],
+)
+
 harness_client_targets = [
+  pixel_probe,
   pointer_client,
+  pointer_modifiers_client,
   keyboard_keymap_client,
   input_method_client,
   drag_client,
