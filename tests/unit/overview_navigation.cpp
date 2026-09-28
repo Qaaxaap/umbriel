@@ -1,8 +1,32 @@
 #include "check.h"
+#include "input/gesture_physics.h"
 #include "overview/navigation.h"
 
+#include <cmath>
+#include <cstdint>
+
+using umbriel::GesturePhysics;
 using umbriel::NavigationSource;
 using umbriel::OverviewNavigation;
+
+namespace {
+
+  // The row a filmstrip release from row 0 lands on, the way the overview settles it at zoom 0.5: `travel` scroll units
+  // in 10 ms events at `unitsPerSec`, a release sample 10 ms after the last one, then the projection rounded onto one
+  // of six rows.
+  int landingRow(double travel, double unitsPerSec) {
+    OverviewNavigation nav;
+    const int events = static_cast<int>(std::ceil(travel * 100.0 / unitsPerSec));
+    uint32_t timeMsec = 10;
+    for (int i = 0; i < events; ++i, timeMsec += 10) {
+      nav.update(0, travel / events, timeMsec);
+    }
+    nav.update(0, 0, timeMsec);
+    const double scale = OverviewNavigation::travelScale(1.0, 0.5, 1.0, OverviewNavigation::kScrollTravel.workspace);
+    return GesturePhysics::stepTarget(nav.projectedPosition() * scale, 0, 5);
+  }
+
+} // namespace
 
 UMBRIEL_TEST(diagonalInputLocksOnceAndRetainsInitialTravel) {
   OverviewNavigation nav;
@@ -29,13 +53,13 @@ UMBRIEL_TEST(releaseAfterPauseDoesNotRetainFlickVelocity) {
   CHECK_EQ(nav.projectedPosition(), 40.0);
 }
 
-UMBRIEL_TEST(releaseProjectionCarriesAFlickPastWhereTheFingersStopped) {
-  OverviewNavigation nav;
-  nav.update(0, 50, 10);
-  nav.update(0, 50, 20);
-  nav.update(0, 0, 30);
-  CHECK(nav.velocity() > 0.0);
-  CHECK(nav.projectedPosition() > nav.position());
+UMBRIEL_TEST(filmstripReleaseLandsByDistanceAndSpeedTogether) {
+  // 0.625 of a row released gently settles on the next row, not the one after.
+  CHECK_EQ(landingRow(250, 1000), 1);
+  // The same distance flicked hard carries across several rows.
+  CHECK(landingRow(250, 3500) > 2);
+  // No release speed carries the filmstrip past its last row.
+  CHECK_EQ(landingRow(1000, 20000), 5);
 }
 
 UMBRIEL_TEST(travelCoversOneStepWhateverTheScreenMeasures) {
