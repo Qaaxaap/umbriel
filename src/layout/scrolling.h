@@ -42,6 +42,7 @@ namespace umbriel {
     void insertViewIntoColumn(View* view, int columnIndex, int rowIndex) override;
     bool consume(View* view, int direction) override;
     bool expel(View* view, int direction) override;
+    bool consumeFrom(View* view, int direction) override;
     bool moveViewVertical(View* view, int direction) override;
     bool swapViews(View* a, View* b) override;
     void removeView(View* view) override;
@@ -152,6 +153,8 @@ namespace umbriel {
       std::optional<size_t> group;
     };
     [[nodiscard]] JoinPoint joinPoint(const Column& column) const;
+    // The row a window joining `group` as a tab takes: after its shown tab when new tabs go there, else at its end.
+    [[nodiscard]] size_t newTabRow(const TabGroup& group) const;
     // Weight for a row being added to `column` at `row`, taking over the column's edge gap when the row lands against
     // one. Shared by fresh inserts and by consume, so free space always becomes the incoming row's extent.
     double claimInsertWeight(Column& column, int row, double fallbackWeight);
