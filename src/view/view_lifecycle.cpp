@@ -524,6 +524,7 @@ namespace umbriel {
     m_maximizedToEdges = false;
     m_hasFullscreenRestoreBox = false;
     m_restorePinnedAfterFullscreen = false;
+    m_xCompositorFullscreen = false;
     if (m_pinned) {
       m_pinned = false;
       m_restoreTiledAfterUnpin = false;

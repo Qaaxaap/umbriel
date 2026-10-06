@@ -338,6 +338,11 @@ namespace umbriel {
     );
 
     const bool requested = requestedFullscreen();
+    if (!requested && scheduledFullscreen() && m_xCompositorFullscreen) {
+      kLog.debug("request_fullscreen denied for compositor-owned X11 '{}'", appId() != nullptr ? appId() : "?");
+      reassertRoleState();
+      return;
+    }
     const FullscreenRequestDisposition disposition =
         m_deferredUnfullscreen.observeClientRequest(requested, scheduledActivated(), scheduledFullscreen());
 
@@ -385,7 +390,9 @@ namespace umbriel {
     if (!roleInitialized()) {
       return;
     }
-    setFullscreen(!scheduledFullscreen());
+    const bool fullscreen = !scheduledFullscreen();
+    m_xCompositorFullscreen = m_xsurface != nullptr && fullscreen;
+    setFullscreen(fullscreen);
   }
 
   void View::applyDeferredUnfullscreen() {
@@ -715,6 +722,7 @@ namespace umbriel {
     // Any leave-fullscreen invalidates a pending float-toggle restore: the
     // float path re-sets the flag right after its own setFullscreen(false).
     if (!fullscreen) {
+      m_xCompositorFullscreen = false;
       m_refullscreenOnTile = false;
     }
     const bool unpinning = fullscreen && m_pinned;

@@ -869,6 +869,9 @@ namespace umbriel {
     // Inactive client unfullscreen requests wait briefly for xdg or foreign activation. Any later client request or
     // compositor-driven fullscreen change clears the parked request.
     DeferredUnfullscreen m_deferredUnfullscreen;
+    // An X11 window entered through the compositor toggle stays fullscreen until another compositor action releases
+    // it. This prevents Wine from immediately undoing the explicit user action with a contradictory EWMH request.
+    bool m_xCompositorFullscreen = false;
     bool m_onActiveWorkspace = false;
     bool m_inScratchpad = false;
     bool m_urgent = false;

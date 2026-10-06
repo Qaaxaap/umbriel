@@ -185,6 +185,10 @@ Sizing rules per layout live in [Sizing behavior](layout.md#sizing-behavior).
 | `window-toggle-maximize-to-edges` | Toggle maximize without gaps, struts, or borders |
 | `window-toggle-pinned` | Pin the focused window above other windows |
 
+For Xwayland windows, fullscreen entered with `window-toggle-fullscreen`
+remains compositor-owned until an Umbriel action exits it. Fullscreen entered
+by the application remains client-controlled.
+
 ## Scratchpad
 
 Scratchpads are global named holding areas that roam between outputs.
