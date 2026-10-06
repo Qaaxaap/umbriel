@@ -833,6 +833,9 @@ namespace umbriel {
     for (const auto& view : self->m_registry.all()) {
       view->refreshStartupRuleEffects();
     }
+    for (const auto& layer : self->m_layerSurfaces) {
+      layer->refreshStartupRuleEffects();
+    }
     return 0;
   }
 

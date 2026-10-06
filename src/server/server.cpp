@@ -1054,7 +1054,7 @@ namespace umbriel {
     m_startTime = std::chrono::steady_clock::now();
     m_startupRulesTimer = wl_event_loop_add_timer(loop, onStartupRulesTimer, this);
     if (m_startupRulesTimer != nullptr) {
-      wl_event_source_timer_update(m_startupRulesTimer, kStartupWindowRuleDurationMs);
+      wl_event_source_timer_update(m_startupRulesTimer, kStartupRuleDurationMs);
     }
 
     if (startupCmd != nullptr) {

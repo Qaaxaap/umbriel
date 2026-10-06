@@ -298,10 +298,23 @@ namespace umbriel {
       return true;
     }
 
+    const registry::Choices<LayerShellLayer>& layerShellLayers() {
+      static const registry::Choices<LayerShellLayer> choices{
+          {.name = "background", .value = LayerShellLayer::Background},
+          {.name = "bottom", .value = LayerShellLayer::Bottom},
+          {.name = "top", .value = LayerShellLayer::Top},
+          {.name = "overlay", .value = LayerShellLayer::Overlay},
+      };
+      return choices;
+    }
+
     const registry::Fields<LayerRule>& layerRuleFields() {
       using L = LayerRule;
       static const registry::Fields<L> match{
           regexField("namespace", &L::namespacePatterns),
+          // As in window rules: a selector that quietly matches more than it says would restyle other surfaces.
+          registry::strict(registry::choice("layer", &L::matchLayer, layerShellLayers())),
+          registry::strict(registry::boolean("at_startup", &L::matchAtStartup)),
       };
       static const registry::Fields<L> fields{
           registry::table<L>(
