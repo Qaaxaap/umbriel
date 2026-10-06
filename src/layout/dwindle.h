@@ -50,7 +50,7 @@ namespace umbriel {
     void insertViewIntoColumn(View* view, int columnIndex, int rowIndex) override;
     bool consume(View* view, int direction) override;
     bool expel(View* view, int direction) override;
-    // A dwindle leaf holds one window, so there is no container to pull a window from.
+    // Consume swaps tiles here, so pulling a neighbor in would only repeat it; the action leaves the tree alone.
     bool consumeFrom(View* /*view*/, int /*direction*/) override { return false; }
     bool moveViewVertical(View* view, int direction) override;
     // Moves the view out of its tile and into the tile across the edge it leaves through. That tile splits along its
