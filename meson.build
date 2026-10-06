@@ -83,6 +83,10 @@ wlr_has_drm_backend = cpp.get_define(
   prefix: '#include <wlr/config.h>',
   dependencies: wlroots_dep,
 ) == '1'
+add_project_arguments(
+  '-DUMBRIEL_HAS_DRM_BACKEND=' + wlr_has_drm_backend.to_int().to_string(),
+  language: 'cpp',
+)
 if cpp.get_define('WLR_HAS_LIBINPUT_BACKEND', prefix: '#include <wlr/config.h>', dependencies: wlroots_dep) != '1'
   error('Umbriel requires wlroots built with the libinput backend')
 endif
@@ -117,6 +121,7 @@ nlohmann_json_dep = dependency('nlohmann_json')
 cairo_dep = dependency('cairo')
 pangocairo_dep = dependency('pangocairo')
 libdrm_dep = dependency('libdrm', version: '>=2.4.129')
+libdisplay_info_dep = dependency('libdisplay-info', version: '>=0.3.0')
 libudev_dep = dependency('libudev', required: false)
 xcb_dep = dependency('xcb')
 xcb_icccm_dep = dependency('xcb-icccm')
@@ -685,6 +690,7 @@ core_sources = files(
   'src/server/actions.cpp',
   'src/server/effects.cpp',
   'src/output/output.cpp',
+  'src/output/hdr_metadata.cpp',
   'src/input/seat.cpp',
   'src/input/keyboard.cpp',
   'src/input/text_input.cpp',
@@ -749,6 +755,7 @@ umbriel_core_deps = [
   cairo_dep,
   pangocairo_dep,
   libdrm_dep,
+  libdisplay_info_dep,
   native_drm_policy_deps,
   nlohmann_json_dep,
   layer_shell_protocol_dep,

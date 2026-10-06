@@ -12,6 +12,7 @@
 #include "output/format_sequence.h"
 #include "output/frame_schedule.h"
 #include "output/gamma_transition.h"
+#include "output/hdr_metadata.h"
 #include "output/identity.h"
 #include "output/mode_selection.h"
 #include "output/sdr_format.h"
@@ -65,7 +66,8 @@ namespace umbriel {
   }
 
   Output::Output(Server& server, wlr_output* output)
-      : m_server(&server), m_output(output), m_defaultScale(output->scale) {
+      : m_server(&server), m_output(output), m_defaultScale(output->scale),
+        m_hdrStaticMetadata(hdrStaticMetadataForOutput(output)) {
     m_output->data = this;
     wlr_output_init_render(m_output, m_server->allocator(), m_server->renderer());
 
@@ -432,14 +434,7 @@ namespace umbriel {
       } else if (!m_server->renderer()->features.output_color_transform) {
         earlyHdrFail = "renderer lacks FP16 output transform";
       } else {
-        hdrDescription = {
-            .primaries = WLR_COLOR_NAMED_PRIMARIES_BT2020,
-            .transfer_function = WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ,
-            .mastering_display_primaries = {},
-            .mastering_luminance = {},
-            .max_cll = 0,
-            .max_fall = 0,
-        };
+        hdrDescription = makeHdrOutputDescription(m_output->default_primaries, m_hdrStaticMetadata);
 
         if (!wlr_output_state_set_image_description(&state, &hdrDescription)) {
           earlyHdrFail = "failed to stage HDR image description";

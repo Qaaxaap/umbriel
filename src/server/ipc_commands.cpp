@@ -361,6 +361,18 @@ namespace umbriel {
             "  supported transfer functions: {}; primaries: {}", joinNames(output.at("supported_transfer_functions")),
             joinNames(output.at("supported_primaries"))
         );
+        if (output.at("mastering_luminance").is_object()) {
+          const auto& luminance = output.at("mastering_luminance");
+          std::println(
+              "  output metadata: {} to {} cd/m2; MaxCLL: {}; MaxFALL: {}", luminance.value("min", 0.0),
+              luminance.value("max", 0.0), output.value("max_cll", 0.0), output.value("max_fall", 0.0)
+          );
+        } else if (output.value("hdr_active", false)) {
+          std::println(
+              "  output metadata: luminance unavailable; MaxCLL: {}; MaxFALL: {}", output.value("max_cll", 0.0),
+              output.value("max_fall", 0.0)
+          );
+        }
       }
       for (const auto& surface : ok.at("surfaces")) {
         std::println(
@@ -611,7 +623,7 @@ namespace umbriel {
     for (const auto& output : server.outputs()) {
       const wlr_output* wlrOutput = output->wlr();
       const wlr_output_image_description* description = wlrOutput->image_description;
-      outputs.push_back({
+      nlohmann::json entry = {
           {"name", wlrOutput->name},
           {"enabled", wlrOutput->enabled},
           {"hdr_mode", hdrModeName(output->hdrMode())},
@@ -627,7 +639,29 @@ namespace umbriel {
           {"bit_depth_fallback_reason", output->bitDepthFallbackReason()},
           {"supported_transfer_functions", supportedTransferFunctions(wlrOutput->supported_transfer_functions)},
           {"supported_primaries", supportedPrimaries(wlrOutput->supported_primaries)},
-      });
+          {"max_cll", description != nullptr ? description->max_cll : 0.0},
+          {"max_fall", description != nullptr ? description->max_fall : 0.0},
+      };
+      entry["mastering_display_primaries"] = nullptr;
+      entry["mastering_luminance"] = nullptr;
+      if (description != nullptr) {
+        const auto& primaries = description->mastering_display_primaries;
+        if (primaries.white.x != 0.0 || primaries.white.y != 0.0) {
+          entry["mastering_display_primaries"] = {
+              {"red", xy(primaries.red)},
+              {"green", xy(primaries.green)},
+              {"blue", xy(primaries.blue)},
+              {"white", xy(primaries.white)},
+          };
+        }
+        if (description->mastering_luminance.max > description->mastering_luminance.min) {
+          entry["mastering_luminance"] = {
+              {"min", description->mastering_luminance.min},
+              {"max", description->mastering_luminance.max},
+          };
+        }
+      }
+      outputs.push_back(std::move(entry));
     }
 
     nlohmann::json surfaces = nlohmann::json::array();

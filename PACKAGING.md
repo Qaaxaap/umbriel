@@ -84,6 +84,7 @@ distribution-provided LTO and archive member pruning.
 - libudev, required for native `[drm]` GPU exclusion support
 - pixman 0.43 or newer
 - libdrm 2.4.129 or newer
+- libdisplay-info 0.3 or newer
 - Cairo and PangoCairo
 - tomlplusplus
 - nlohmann-json

@@ -3,6 +3,7 @@
 #include "core/dirty.h"
 #include "output/cursor_plane_pace.h"
 #include "output/frame_schedule.h"
+#include "output/hdr_metadata.h"
 #include "scene/effect_selection.h"
 
 #include <cstdint>
@@ -193,6 +194,7 @@ namespace umbriel {
     Server* m_server = nullptr;
     wlr_output* m_output = nullptr;
     float m_defaultScale = 1.0F;
+    std::optional<HdrStaticMetadata> m_hdrStaticMetadata;
     wlr_scene_output* m_sceneOutput = nullptr;
     wlr_scene_tree* m_layerTrees[kLayerCount]{};
     wlr_scene_tree* m_popupTree = nullptr;

@@ -56,6 +56,10 @@ namespace {
         {"bit_depth_fallback_reason", ""},
         {"supported_transfer_functions", nlohmann::json::array()},
         {"supported_primaries", nlohmann::json::array()},
+        {"mastering_display_primaries", nullptr},
+        {"mastering_luminance", nullptr},
+        {"max_cll", 0.0},
+        {"max_fall", 0.0},
     };
     output.merge_patch(outputOverrides);
     return {
@@ -154,6 +158,25 @@ UMBRIEL_TEST(colorHumanDepthIgnoresActivityFlags) {
       *spec, colorPayload({{"hdr_active", true}, {"bit_depth_active", true}, {"render_format", "XR24"}})
   );
   CHECK(out.contains("bit depth: 8 (configured 8)"));
+}
+
+UMBRIEL_TEST(colorHumanShowsCommittedHdrOutputMetadata) {
+  const umbriel::IpcCommandSpec* spec = umbriel::findIpcCommand("color");
+  CHECK(spec != nullptr && spec->printHuman != nullptr);
+  if (spec == nullptr || spec->printHuman == nullptr) {
+    return;
+  }
+
+  const std::string out = captureHumanOutput(
+      *spec,
+      colorPayload({
+          {"hdr_active", true},
+          {"mastering_luminance", {{"min", 0.005}, {"max", 400.0}}},
+          {"max_cll", 400.0},
+          {"max_fall", 200.0},
+      })
+  );
+  CHECK(out.contains("output metadata: 0.005 to 400 cd/m2; MaxCLL: 400; MaxFALL: 200"));
 }
 
 UMBRIEL_TEST(parsesOutputCreateNameOnly) {

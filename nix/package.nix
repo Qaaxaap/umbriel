@@ -16,6 +16,7 @@
   pango,
   libGL,
   libdrm,
+  libdisplay-info,
   libgbm,
   libxcb,
   libxcb-wm,
@@ -57,6 +58,7 @@ stdenv.mkDerivation {
     libGL
     nlohmann_json
     libdrm
+    libdisplay-info
     libgbm
     libxcb
     libxcb-wm
