@@ -613,6 +613,7 @@ pure_sources = files(
   'src/output/identity.cpp',
   'src/output/enable_overrides.cpp',
   'src/output/format_sequence.cpp',
+  'src/output/gamma_transition.cpp',
   'src/output/mode_selection.cpp',
   'src/output/cursor_plane_pace.cpp',
   'src/server/allocator_policy.cpp',

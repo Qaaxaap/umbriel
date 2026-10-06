@@ -177,7 +177,6 @@ namespace umbriel {
     void setHdrFallbackReason(std::string_view reason);
     void setBitDepthFallbackReason(std::string_view reason);
     void updateSceneSdrWhite();
-    void rejectGammaControl(wlr_gamma_control_v1* control);
     void armFrameRetry();
     void armEffectFrame(uint64_t nowMsec);
     // Render locks other than this output's animation lock.
@@ -218,7 +217,6 @@ namespace umbriel {
 #endif
     bool m_desktopEnabled = true;
     bool m_dpmsOff = false;
-    bool m_hdrGammaWarningLogged = false;
     bool m_modeFallbackWarned = false;
     std::optional<FormatTier> m_vrrDroppedTier;
     bool m_fullscreenHdrRequested = false;
