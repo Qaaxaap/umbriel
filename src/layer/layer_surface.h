@@ -70,6 +70,7 @@ namespace umbriel {
     void notifyDesktopStack();
     void updateBlur();
     void applyConfig();
+    void refreshStartupRuleEffects();
     void applyFadeAlpha();
     void beginCloseAnimation();
 

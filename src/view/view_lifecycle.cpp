@@ -303,7 +303,7 @@ namespace umbriel {
             }
         );
         if (assignedScratchpad && rule.defaultFocused.value_or(false)) {
-          scratchpad->summon(*rule.defaultScratchpad, restoreOutput);
+          scratchpad->summon(*rule.defaultScratchpad, restoreOutput, this);
         }
       }
     }

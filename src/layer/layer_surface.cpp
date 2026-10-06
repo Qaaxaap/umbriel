@@ -21,6 +21,22 @@ namespace umbriel {
 
   namespace {
     constexpr Logger kLog("layer");
+
+    // Unknown values fall back to the top layer, matching Output::layerTree.
+    LayerShellLayer layerOf(uint32_t layer) {
+      switch (layer) {
+      case ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND:
+        return LayerShellLayer::Background;
+      case ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM:
+        return LayerShellLayer::Bottom;
+      case ZWLR_LAYER_SHELL_V1_LAYER_TOP:
+        return LayerShellLayer::Top;
+      case ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY:
+        return LayerShellLayer::Overlay;
+      default:
+        return LayerShellLayer::Top;
+      }
+    }
   } // namespace
 
   LayerSurface* LayerSurface::fromSurface(wlr_surface* surface) {
@@ -73,7 +89,7 @@ namespace umbriel {
       m_layerSurface = nullptr;
       return;
     }
-    m_rule = resolveLayerRules(config(), ruleText(m_layerSurface->namespace_));
+    m_rule = resolveLayerRules(config(), ruleText(m_layerSurface->namespace_), layerOf(layer), m_server->uptimeMs());
     m_scene->tree->node.data = sceneNodeData(this);
     m_layerSurface->data = this;
 
@@ -316,8 +332,19 @@ namespace umbriel {
   }
 
   void LayerSurface::applyConfig() {
-    m_rule = resolveLayerRules(config(), ruleText(m_layerSurface->namespace_));
+    m_rule = resolveLayerRules(
+        config(), ruleText(m_layerSurface->namespace_), layerOf(m_layerSurface->current.layer), m_server->uptimeMs()
+    );
     updateBlur();
+  }
+
+  void LayerSurface::refreshStartupRuleEffects() {
+    m_rule = resolveLayerRules(
+        config(), ruleText(m_layerSurface->namespace_), layerOf(m_layerSurface->current.layer), m_server->uptimeMs()
+    );
+    if (m_mapped) {
+      updateBlur();
+    }
   }
 
   void LayerSurface::onMap(wl_listener* listener, void* /*data*/) {
@@ -433,6 +460,10 @@ namespace umbriel {
     }
 
     if ((m_layerSurface->current.committed & WLR_LAYER_SURFACE_V1_STATE_LAYER) != 0) {
+      m_rule = resolveLayerRules(
+          config(), ruleText(m_layerSurface->namespace_), layerOf(m_layerSurface->current.layer), m_server->uptimeMs()
+      );
+      updateBlur();
       reparentToLayer(m_layerSurface->current.layer);
       notifyDesktopStack();
     }

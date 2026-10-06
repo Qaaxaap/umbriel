@@ -1797,6 +1797,25 @@ UMBRIEL_TEST(windowStartupMatcherLoadsBoolean) {
   CHECK(!containsDiagnostic(store, "unknown key window_rule.opacity"));
 }
 
+UMBRIEL_TEST(layerMatchersLoadLayerAndStartup) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write("[[layer_rule]]\nmatch.layer = \"top\"\nmatch.at_startup = true\nblur = true\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().layerRules.size(), size_t{1});
+  CHECK(store.config().layerRules[0].matchLayer == umbriel::LayerShellLayer::Top);
+  CHECK(store.config().layerRules[0].matchAtStartup == true);
+  CHECK(!containsDiagnostic(store, "unknown key layer_rule.match.layer"));
+  CHECK(!containsDiagnostic(store, "unknown key layer_rule.match.at_startup"));
+
+  // A layer selector that names no layer rejects the rule, as a wrong value would blur every layer instead.
+  file.write("[[layer_rule]]\nmatch.layer = \"sideways\"\nblur = true\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().layerRules.empty());
+}
+
 UMBRIEL_TEST(windowStateMatchersLoadBooleans) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();

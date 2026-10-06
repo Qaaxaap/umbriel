@@ -420,7 +420,7 @@ namespace umbriel {
         if (assignedScratchpad
             && scratchpadChanged
             && rule.defaultFocused.value_or(false)
-            && scratchpadManager->summon(*scratchpadTarget, targetOutput)
+            && scratchpadManager->summon(*scratchpadTarget, targetOutput, this)
             && wasActivated) {
           m_server->focusView(this);
         }

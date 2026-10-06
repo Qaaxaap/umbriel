@@ -528,8 +528,18 @@ namespace umbriel {
     bool operator==(const ResolvedWindowRule&) const = default;
   };
 
+  // The layer-shell layers a `[[layer_rule]]` can select with `match.layer`.
+  enum class LayerShellLayer {
+    Background,
+    Bottom,
+    Top,
+    Overlay,
+  };
+
   struct LayerRule {
     RegexPatterns namespacePatterns;
+    std::optional<LayerShellLayer> matchLayer;
+    std::optional<bool> matchAtStartup;
     std::optional<bool> blur;
     std::optional<bool> blurPopups;
     std::optional<double> ignoreAlpha;
@@ -538,6 +548,8 @@ namespace umbriel {
     // See WindowRule: the regexes are derived from the patterns.
     [[nodiscard]] bool operator==(const LayerRule& other) const {
       return namespacePatterns == other.namespacePatterns
+          && matchLayer == other.matchLayer
+          && matchAtStartup == other.matchAtStartup
           && blur == other.blur
           && blurPopups == other.blurPopups
           && ignoreAlpha == other.ignoreAlpha

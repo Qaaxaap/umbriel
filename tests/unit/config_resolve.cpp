@@ -819,7 +819,7 @@ UMBRIEL_TEST(windowRulesMatchContentTypesAndComposeSelectors) {
   );
   CHECK(!wrongFocus.opacity);
   const auto afterStartupRule = umbriel::resolveWindowRules(
-      config, "runner", "now playing", std::nullopt, ContentType::Game, {}, umbriel::kStartupWindowRuleDurationMs
+      config, "runner", "now playing", std::nullopt, ContentType::Game, {}, umbriel::kStartupRuleDurationMs
   );
   CHECK(!afterStartupRule.opacity);
   CHECK(afterStartupRule.defaultFloating && *afterStartupRule.defaultFloating);
@@ -1102,12 +1102,12 @@ UMBRIEL_TEST(layerRulesMergeMatchingFieldsInOrder) {
   second.optimized = true;
   config.layerRules.push_back(std::move(second));
 
-  const auto resolved = umbriel::resolveLayerRules(config, "panel");
+  const auto resolved = umbriel::resolveLayerRules(config, "panel", umbriel::LayerShellLayer::Top, 0);
   CHECK(resolved.blur && *resolved.blur);
   CHECK(resolved.ignoreAlpha && *resolved.ignoreAlpha == 0.75);
   CHECK(resolved.optimized && *resolved.optimized);
 
-  const auto unmatched = umbriel::resolveLayerRules(config, "wallpaper");
+  const auto unmatched = umbriel::resolveLayerRules(config, "wallpaper", umbriel::LayerShellLayer::Top, 0);
   CHECK(!unmatched.blur);
   CHECK(!unmatched.ignoreAlpha);
   CHECK(!unmatched.optimized);
@@ -1118,9 +1118,9 @@ UMBRIEL_TEST(layerRulesMergeMatchingFieldsInOrder) {
   config.layerRules.push_back(std::move(blank));
 
   // Layer surfaces name themselves at creation, so an empty namespace is a value a rule can match.
-  const auto blankNamespace = umbriel::resolveLayerRules(config, "");
+  const auto blankNamespace = umbriel::resolveLayerRules(config, "", umbriel::LayerShellLayer::Top, 0);
   CHECK(blankNamespace.blur && *blankNamespace.blur);
-  CHECK(!umbriel::resolveLayerRules(config, std::nullopt).blur);
+  CHECK(!umbriel::resolveLayerRules(config, std::nullopt, umbriel::LayerShellLayer::Top, 0).blur);
 }
 
 UMBRIEL_TEST(layerRulesAcceptSeveralNamespacePatterns) {
@@ -1132,9 +1132,61 @@ UMBRIEL_TEST(layerRulesAcceptSeveralNamespacePatterns) {
   panels.blur = true;
   config.layerRules.push_back(std::move(panels));
 
-  CHECK(umbriel::resolveLayerRules(config, "panel").blur.has_value());
-  CHECK(umbriel::resolveLayerRules(config, "bar").blur.has_value());
-  CHECK(!umbriel::resolveLayerRules(config, "dock").blur.has_value());
+  CHECK(umbriel::resolveLayerRules(config, "panel", umbriel::LayerShellLayer::Top, 0).blur.has_value());
+  CHECK(umbriel::resolveLayerRules(config, "bar", umbriel::LayerShellLayer::Top, 0).blur.has_value());
+  CHECK(!umbriel::resolveLayerRules(config, "dock", umbriel::LayerShellLayer::Top, 0).blur.has_value());
+}
+
+UMBRIEL_TEST(layerRulesMatchLayerAndStartupSelectors) {
+  Config config;
+
+  LayerRule topPanel;
+  topPanel.namespacePatterns.add("^panel$");
+  topPanel.matchLayer = umbriel::LayerShellLayer::Top;
+  topPanel.blur = true;
+  config.layerRules.push_back(std::move(topPanel));
+
+  LayerRule duringStartup;
+  duringStartup.matchAtStartup = true;
+  duringStartup.optimized = true;
+  config.layerRules.push_back(std::move(duringStartup));
+
+  const auto topAtStartup = umbriel::resolveLayerRules(config, "panel", umbriel::LayerShellLayer::Top, 0);
+  CHECK(topAtStartup.blur && *topAtStartup.blur);
+  CHECK(topAtStartup.optimized && *topAtStartup.optimized);
+
+  CHECK(!umbriel::resolveLayerRules(config, "panel", umbriel::LayerShellLayer::Overlay, 0).blur);
+
+  const auto afterStartup =
+      umbriel::resolveLayerRules(config, "panel", umbriel::LayerShellLayer::Top, umbriel::kStartupRuleDurationMs);
+  CHECK(afterStartup.blur && *afterStartup.blur);
+  CHECK(!afterStartup.optimized);
+}
+
+UMBRIEL_TEST(layerRuleStartupBoundaryFlipsForExistingSurface) {
+  Config config;
+
+  LayerRule duringStartup;
+  duringStartup.matchAtStartup = true;
+  duringStartup.optimized = true;
+  config.layerRules.push_back(std::move(duringStartup));
+
+  LayerRule afterStartup;
+  afterStartup.matchAtStartup = false;
+  afterStartup.blur = true;
+  config.layerRules.push_back(std::move(afterStartup));
+
+  // The startup timer re-resolves surfaces that are still alive, so the same panel crossing the boundary must drop the
+  // startup-only rule and pick the opposite one without a layer change or client restart.
+  const auto during =
+      umbriel::resolveLayerRules(config, "panel", umbriel::LayerShellLayer::Top, umbriel::kStartupRuleDurationMs - 1);
+  CHECK(during.optimized && *during.optimized);
+  CHECK(!during.blur);
+
+  const auto past =
+      umbriel::resolveLayerRules(config, "panel", umbriel::LayerShellLayer::Top, umbriel::kStartupRuleDurationMs);
+  CHECK(!past.optimized);
+  CHECK(past.blur && *past.blur);
 }
 
 UMBRIEL_TEST(securityContextRulesAcceptSeveralPatternsPerSelector) {
