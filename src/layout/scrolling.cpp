@@ -515,9 +515,11 @@ namespace umbriel {
     if (!last) {
       return {.row = column.views.size(), .group = std::nullopt};
     }
-    const TabGroup& group = column.tabs.groups()[*last];
-    const bool afterActive = m_config->tabs.newTabPosition == NewTabPosition::AfterActive;
-    return {.row = afterActive ? group.active + 1 : group.end(), .group = last};
+    return {.row = newTabRow(column.tabs.groups()[*last]), .group = last};
+  }
+
+  size_t ScrollingLayout::newTabRow(const TabGroup& group) const {
+    return m_config->tabs.newTabPosition == NewTabPosition::AfterActive ? group.active + 1 : group.end();
   }
 
   // Weight for a row about to be added at `row`, and the gap it takes over. A column keeps free space at its ends as
@@ -658,11 +660,8 @@ namespace umbriel {
     // any other row takes it as the row directly below. Focus stays where it was either way.
     const int focusRow = rowOf(view);
     if (const std::optional<size_t> group = destination.tabs.groupIndexAt(static_cast<size_t>(focusRow))) {
-      const TabGroup& tabs = destination.tabs.groups()[*group];
-      const bool afterActive = m_config->tabs.newTabPosition == NewTabPosition::AfterActive;
-      insertRow(
-          destination, afterActive ? tabs.active + 1 : tabs.end(), pulled, erased.heightWeight, rememberedExtent, group
-      );
+      const size_t landing = newTabRow(destination.tabs.groups()[*group]);
+      insertRow(destination, landing, pulled, erased.heightWeight, rememberedExtent, group);
       return true;
     }
     const auto landing = static_cast<size_t>(focusRow + 1);
