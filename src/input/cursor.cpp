@@ -1432,9 +1432,9 @@ namespace umbriel {
         if (button == grab->button) {
           m_server->gestures()->endPointerScroll(m_server->sessionLocked(), timeMsec);
           resetMode();
-          // The grab cleared client focus on press and consumed every motion; re-run hit testing so hover/focus is
-          // correct without further motion.
-          processMotion(timeMsec, m_cursor->x, m_cursor->y);
+          // The grab cleared client focus on press and consumed every motion. Restore pointer delivery at the final
+          // position without letting this synthetic pass override the column selected by the gesture.
+          processMotion(timeMsec, m_cursor->x, m_cursor->y, false);
         }
         return;
       }

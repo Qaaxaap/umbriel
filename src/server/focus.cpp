@@ -110,12 +110,14 @@ namespace umbriel {
     if (overviewActive) {
       m_server.overview()->onFocusChanged();
     }
-    // Pointer presses and compositor grabs already align focus with their target. Keyboard and activation-driven focus
-    // can instead replace the scene beneath a stationary pointer, so let the next eligible hover refresh it once.
+    // Pointer presses, compositor grabs, and completed gestures already align focus with their target. Keyboard and
+    // activation-driven focus can instead replace the scene beneath a stationary pointer, so let the next eligible
+    // hover refresh it once.
     if (reason != FocusReason::PointerHover
         && reason != FocusReason::PointerPress
         && reason != FocusReason::Grab
-        && reason != FocusReason::DragDrop) {
+        && reason != FocusReason::DragDrop
+        && reason != FocusReason::Gesture) {
       if (leavingConfinement) {
         m_server.cursor()->releaseRuleConfinement(*previous);
       } else {

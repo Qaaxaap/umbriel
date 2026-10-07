@@ -18,6 +18,9 @@ enabled = false
 [layout.scrolling]
 default_extent_fraction = 0.8
 
+[input.focus]
+follows_mouse = true
+
 [keybinds]
 "Mod+MouseMiddle" = "layout-scroll-drag"
 EOF
@@ -79,4 +82,14 @@ if [[ $("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "tab-a") | .ta
   exit 1
 fi
 
-echo "panning onto a tab group focused the tab it shows"
+# Releasing the compositor grab performs a synthetic pointer refresh. It must not let follows_mouse replace the
+# gesture-selected tab with C under the release point, nor arm that replacement for the next tiny motion. A real
+# crossing into C still follows focus.
+pointer move 1199 360
+wait_for_focus tab-b
+pointer move 200 360
+wait_for_focus tab-b
+pointer move 1200 360
+wait_for_focus tab-c
+
+echo "panning selected the shown tab and preserved it until a real pointer crossing"

@@ -679,8 +679,8 @@ namespace umbriel {
       return;
     }
 
-    // Park the strip exactly on the chosen snap first, so the reveal below keeps it there instead of
-    // re-deriving an anchor from the overscrolled position.
+    // Park the strip exactly on the chosen snap before selecting its column. Gesture focus must keep this placement
+    // instead of revealing the column again from the overscrolled position.
     scrolling->setScroll(bestSnap);
 
     View* focused = workspace->focusedView();
@@ -692,7 +692,7 @@ namespace umbriel {
     } else if (!scrolling->columns()[static_cast<size_t>(best)].views.empty()) {
       // A tab group is entered on the tab it shows, as a directional focus move enters it.
       View* target = columnEntry(scrolling->columns()[static_cast<size_t>(best)]);
-      m_server->focusView(target, FocusReason::Directional);
+      m_server->focusView(target, FocusReason::Gesture);
     } else {
       workspace->ensureFocusedVisible();
       workspace->markArrange(true);

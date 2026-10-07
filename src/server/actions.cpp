@@ -770,7 +770,6 @@ namespace umbriel {
       }
       scrolling->setScroll(newScroll);
       workspace->markArrange();
-      invalidateHoverFocusAfterSceneChange(server, true);
     }
 
     bool actionLayoutScrollDrag(Server& /*server*/, const Keybind& bind, std::string* error) {

@@ -133,7 +133,10 @@ previous hover decision once. The next eligible pointer motion can therefore
 select a newly revealed view even when both the old and new pointer coordinates
 fall inside it. After that one refresh, hover returns to geometric
 border-crossing detection so scrolling animations cannot cascade focus through
-windows moving beneath the pointer.
+windows moving beneath the pointer. Explicit layout scrolling is the exception:
+the strip moves without invalidating hover, and a scroll gesture owns its focus
+choice through release. Focus follows again after the pointer crosses into
+another view.
 
 The hover decision compares against seat-global activation, not a workspace's
 remembered focus. A pinned window can retain seat focus while following the
