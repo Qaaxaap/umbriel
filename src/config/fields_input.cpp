@@ -326,6 +326,12 @@ namespace umbriel {
           boolean("hide_when_typing", &In::Cursor::hideWhenTyping),
           integer("hide_timeout_ms", 0, 3600000, &In::Cursor::hideTimeoutMs),
       };
+      static const Fields<In::DragEdgeScroll> dragEdgeScroll{
+          boolean("enabled", &In::DragEdgeScroll::enabled),
+          integer("trigger_zone", 1, 1000, &In::DragEdgeScroll::triggerZone),
+          integer("delay_ms", 0, 10000, &In::DragEdgeScroll::delayMs),
+          real("max_speed", 1.0, 100000.0, &In::DragEdgeScroll::maxSpeed),
+      };
       // The limit is measured in viewport widths and the quantity it is compared against is unbounded: revealing a
       // column three screens away is 3.0. The upper bound here is a nonsense-catcher, not a ceiling. Below zero would
       // refuse focus even for a window already fully visible, which disables hover focus rather than limiting it.
@@ -385,6 +391,7 @@ namespace umbriel {
           table("tablet", &In::tablet, tablet),
           table("touch", &In::touch, touch),
           table("cursor", &In::cursor, cursor),
+          table("drag_edge_scroll", &In::dragEdgeScroll, dragEdgeScroll),
           table("focus", &In::focus, focus),
           registry::rules("device", &In::devices, device, registry::Shape::Error, acceptDevice),
       };

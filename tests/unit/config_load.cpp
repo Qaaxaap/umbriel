@@ -2677,6 +2677,39 @@ hide_timeout_ms = 1500
   CHECK(containsDiagnostic(store, "unknown key input.cursor.hide_timeout"));
 }
 
+UMBRIEL_TEST(dragEdgeScrollLoads) {
+  const umbriel::Config defaults;
+  CHECK(defaults.input.dragEdgeScroll.enabled);
+  CHECK_EQ(defaults.input.dragEdgeScroll.triggerZone, 30);
+  CHECK_EQ(defaults.input.dragEdgeScroll.delayMs, 100);
+  CHECK_EQ(defaults.input.dragEdgeScroll.maxSpeed, 1500.0);
+
+  const TempConfig file;
+  file.write(R"(
+[input.drag_edge_scroll]
+enabled = false
+trigger_zone = 48
+delay_ms = 250
+max_speed = 900.0
+)");
+
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  const umbriel::ConfigReloadResult result = store.reload();
+
+  CHECK(result.success);
+  CHECK(!store.config().input.dragEdgeScroll.enabled);
+  CHECK_EQ(store.config().input.dragEdgeScroll.triggerZone, 48);
+  CHECK_EQ(store.config().input.dragEdgeScroll.delayMs, 250);
+  CHECK_EQ(store.config().input.dragEdgeScroll.maxSpeed, 900.0);
+  CHECK(!containsDiagnostic(store, "unknown key input.drag_edge_scroll.trigger_zone"));
+
+  file.write("[input.drag_edge_scroll]\ntrigger = 48\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().input.dragEdgeScroll.triggerZone, 30);
+  CHECK(containsDiagnostic(store, "unknown key input.drag_edge_scroll.trigger"));
+}
+
 UMBRIEL_TEST(invalidCustomAccelerationCurveIsRejected) {
   const TempConfig file;
   file.write(R"(

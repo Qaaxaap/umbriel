@@ -39,9 +39,6 @@ namespace umbriel {
   namespace {
     constexpr Logger kLog("cursor");
     constexpr double kHotCornerExtent = 8.0;
-    constexpr double kDataDragEdgeScrollTrigger = 30.0;
-    constexpr double kDataDragEdgeScrollMaxSpeed = 1500.0;
-    constexpr int kDataDragEdgeScrollDelayMs = 100;
     constexpr int kDataDragEdgeScrollTickMs = 16;
     constexpr uint32_t kDataDragEdgeScrollMaxElapsedMs = 50;
 
@@ -480,7 +477,9 @@ namespace umbriel {
 
   Workspace* Cursor::dataDragEdgeScrollTarget(double* speed) const {
     *speed = 0;
-    if (m_server->sessionLocked()
+    const Config::Input::DragEdgeScroll& edge = config().input.dragEdgeScroll;
+    if (!edge.enabled
+        || m_server->sessionLocked()
         || (m_server->seat()->wlr()->drag == nullptr && !tiledMoveDragActive())
         || (m_server->overview() != nullptr && m_server->overview()->active())) {
       return nullptr;
@@ -502,12 +501,12 @@ namespace umbriel {
     if (extent <= 0) {
       return nullptr;
     }
-    const double trigger = std::min(kDataDragEdgeScrollTrigger, extent / 2.0);
+    const double trigger = std::min(static_cast<double>(edge.triggerZone), extent / 2.0);
     const double position = vertical ? m_cursor->y : m_cursor->x;
     if (position < origin + trigger) {
-      *speed = -kDataDragEdgeScrollMaxSpeed * std::clamp((origin + trigger - position) / trigger, 0.0, 1.0);
+      *speed = -edge.maxSpeed * std::clamp((origin + trigger - position) / trigger, 0.0, 1.0);
     } else if (position > origin + extent - trigger) {
-      *speed = kDataDragEdgeScrollMaxSpeed * std::clamp((position - (origin + extent - trigger)) / trigger, 0.0, 1.0);
+      *speed = edge.maxSpeed * std::clamp((position - (origin + extent - trigger)) / trigger, 0.0, 1.0);
     }
     if (*speed == 0) {
       return nullptr;
@@ -525,6 +524,7 @@ namespace umbriel {
   }
 
   void Cursor::updateDataDragEdgeScroll() {
+    const Config::Input::DragEdgeScroll& edge = config().input.dragEdgeScroll;
     double speed = 0;
     Workspace* workspace = dataDragEdgeScrollTarget(&speed);
     const int direction = (speed > 0) - (speed < 0);
@@ -548,7 +548,11 @@ namespace umbriel {
     m_dataDragEdgeScrollSpeed = speed;
     m_dataDragEdgeScrollLastMsec = 0;
     m_dataDragEdgeScrollPending = true;
-    wl_event_source_timer_update(m_dataDragEdgeScrollTimer, kDataDragEdgeScrollDelayMs);
+    if (edge.delayMs > 0) {
+      wl_event_source_timer_update(m_dataDragEdgeScrollTimer, edge.delayMs);
+    } else {
+      handleDataDragEdgeScrollTimer();
+    }
   }
 
   void Cursor::cancelDataDragEdgeScroll() {

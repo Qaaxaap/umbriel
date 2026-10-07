@@ -1040,6 +1040,15 @@ namespace umbriel {
         bool operator==(const Cursor&) const = default;
       } cursor;
 
+      // Auto-scroll a scrolling layout while a data drag sits near one of its ends.
+      struct DragEdgeScroll {
+        bool enabled = true;
+        int triggerZone = 30;
+        int delayMs = 100;
+        double maxSpeed = 1500.0;
+        bool operator==(const DragEdgeScroll&) const = default;
+      } dragEdgeScroll;
+
       struct Focus {
         bool followsMouse = false;
         std::optional<double> followsMouseMaxScroll;
