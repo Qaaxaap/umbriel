@@ -67,6 +67,13 @@ namespace umbriel {
       return viewForToplevel(server, wlr_xdg_toplevel_try_from_wlr_surface(root));
     }
 
+    bool sameWaylandClient(const wlr_surface* first, const wlr_surface* second) {
+      if (first == nullptr || second == nullptr || first->resource == nullptr || second->resource == nullptr) {
+        return false;
+      }
+      return wl_resource_get_client(first->resource) == wl_resource_get_client(second->resource);
+    }
+
     std::optional<std::string> processEnvironmentValue(pid_t pid, std::string_view name) {
       if (pid <= 0 || name.empty()) {
         return std::nullopt;
@@ -1349,6 +1356,7 @@ namespace umbriel {
     watch->createdAt = std::chrono::steady_clock::now();
     watch->compositorIssued = compositorIssued;
     watch->inputBacked = !compositorIssued && token->seat != nullptr && token->surface != nullptr;
+    watch->pointerBacked = watch->inputBacked && token->seat->pointer_state.grab_serial == token->serial;
     if (const char* tokenName = wlr_xdg_activation_token_v1_get_name(token)) {
       watch->tokenName = tokenName;
     }
@@ -1391,8 +1399,28 @@ namespace umbriel {
       return false;
     }
     watch->launchClaimed = true;
-    Workspace* workspace = watch->launchWorkspace->workspace;
-    WorkspaceGroup* group = workspace != nullptr ? workspace->group() : nullptr;
+    std::shared_ptr<WorkspaceLaunchAnchor> launchWorkspace = watch->launchWorkspace;
+    Workspace* workspace = launchWorkspace->workspace;
+    WorkspaceGroup* sourceGroup = workspace != nullptr ? workspace->group() : nullptr;
+    WorkspaceGroup* targetGroup = sourceGroup;
+    std::string launchOutputName = watch->launchOutputName;
+    std::string launchWorkspaceId = watch->launchWorkspaceId;
+    bool pointerDrop = false;
+    if (watch->pointerBacked && sameWaylandClient(token->surface, view.rootSurface())) {
+      Output* output = outputFromWlr(preferredOutput());
+      Workspace* pointerWorkspace =
+          output != nullptr && output->workspaceGroup() != nullptr ? output->workspaceGroup()->active() : nullptr;
+      if (pointerWorkspace != nullptr
+          && pointerWorkspace->group() != nullptr
+          && pointerWorkspace->group() != sourceGroup) {
+        launchWorkspace = pointerWorkspace->reserveForLaunch();
+        workspace = pointerWorkspace;
+        targetGroup = pointerWorkspace->group();
+        launchWorkspaceId = pointerWorkspace->id();
+        launchOutputName = output->wlr()->name != nullptr ? output->wlr()->name : "";
+        pointerDrop = true;
+      }
+    }
     const char* tokenName = wlr_xdg_activation_token_v1_get_name(token);
     uint32_t timeoutMsec = 0;
     if (token->activation != nullptr && token->activation->token_timeout_msec > 0) {
@@ -1404,15 +1432,18 @@ namespace umbriel {
     }
     const bool assigned = workspace != nullptr
         && tokenName != nullptr
-        && view.assignLaunchOrigin(tokenName, watch->launchWorkspace, timeoutMsec);
+        && view.assignLaunchOrigin(tokenName, std::move(launchWorkspace), timeoutMsec);
     watch->launchWorkspace.reset();
-    if (group != nullptr && !m_stopping) {
-      group->reconcileDynamic();
+    if (sourceGroup != nullptr && !m_stopping) {
+      sourceGroup->reconcileDynamic();
+    }
+    if (targetGroup != nullptr && targetGroup != sourceGroup && !m_stopping) {
+      targetGroup->reconcileDynamic();
     }
     kLog.debug(
-        "launch placement token='{}' output='{}' workspace='{}' target_app_id='{}' assigned={}",
-        tokenName != nullptr ? tokenName : "<unknown>", watch->launchOutputName, watch->launchWorkspaceId,
-        view.appId() != nullptr ? view.appId() : "", assigned
+        "launch placement token='{}' output='{}' workspace='{}' target_app_id='{}' pointer_drop={} assigned={}",
+        tokenName != nullptr ? tokenName : "<unknown>", launchOutputName, launchWorkspaceId,
+        view.appId() != nullptr ? view.appId() : "", pointerDrop, assigned
     );
     return assigned;
   }

@@ -634,6 +634,7 @@ namespace umbriel {
       std::chrono::steady_clock::time_point createdAt;
       bool compositorIssued = false;
       bool inputBacked = false;
+      bool pointerBacked = false;
       bool launchClaimed = false;
       std::shared_ptr<WorkspaceLaunchAnchor> launchWorkspace;
       std::string tokenName;

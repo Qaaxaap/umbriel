@@ -49,6 +49,11 @@ map. Explicit output, workspace, and scratchpad window rules are resolved
 instead when present. If the pointer-preferred workspace has changed, the
 captured workspace receives the new window without changing focus or switching
 the user back, including when the pointer moved to another output.
+One exception applies to a pointer gesture that creates another toplevel in the
+same Wayland client. If the pointer gesture ends on another output and the
+client redeems its activation token there, the new toplevel opens on the active
+workspace of the drop output. This lets browser tab tear-offs follow their drop
+without changing ordinary application launch placement.
 `focus_on_activate` controls the activation decision and does not select the
 recorded launch destination. Redeeming the token against an existing or
 remapping toplevel consumes it without relocation.
