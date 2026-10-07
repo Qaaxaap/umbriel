@@ -473,10 +473,15 @@ namespace umbriel {
     return 0;
   }
 
+  bool Cursor::tiledMoveDragActive() const {
+    const auto* grab = std::get_if<MoveGrab>(&m_grab);
+    return grab != nullptr && grab->view != nullptr && !grab->pending && grab->target == DragTarget::Tiled;
+  }
+
   Workspace* Cursor::dataDragEdgeScrollTarget(double* speed) const {
     *speed = 0;
     if (m_server->sessionLocked()
-        || m_server->seat()->wlr()->drag == nullptr
+        || (m_server->seat()->wlr()->drag == nullptr && !tiledMoveDragActive())
         || (m_server->overview() != nullptr && m_server->overview()->active())) {
       return nullptr;
     }
@@ -1188,6 +1193,7 @@ namespace umbriel {
 
   void Cursor::resetMode() {
     m_server->hideInsertHint();
+    cancelDataDragEdgeScroll();
     View* view = grabbedView();
     if (std::holds_alternative<ScrollDragGrab>(m_grab)) {
       m_server->gestures()->endPointerScroll(true, 0);
@@ -1960,6 +1966,7 @@ namespace umbriel {
         }
         processMove();
         updateDropTarget();
+        updateDataDragEdgeScroll();
         return;
       }
     }
@@ -2863,6 +2870,12 @@ namespace umbriel {
         wlr_seat_pointer_notify_clear_focus(seat);
       }
       wlr_seat_pointer_notify_frame(seat);
+      return;
+    }
+    if (tiledMoveDragActive()) {
+      // The compositor owns drop targeting during a window move; client pointer focus stays suspended.
+      updateDataDragEdgeScroll();
+      updateDropTarget();
       return;
     }
     if (!isPassthrough() || seat->pointer_state.button_count != 0) {
