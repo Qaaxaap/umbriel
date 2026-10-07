@@ -2072,6 +2072,30 @@ UMBRIEL_TEST(outputCyclicWorkspacesLoadsAndDefaultsOff) {
   CHECK(containsDiagnostic(store, "ignoring output.DP-1.cyclic_workspaces (expected boolean)"));
 }
 
+UMBRIEL_TEST(outputFocusAtStartupLoadsAndDefaultsOff) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write("[output.DP-1]\nfocus_at_startup = true\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().outputs.size(), size_t{1});
+  CHECK(store.config().outputs[0].focusAtStartup);
+
+  file.write("[output.DP-1]\nfocus_at_startup = false\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().outputs[0].focusAtStartup);
+
+  file.write("[output.DP-1]\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().outputs[0].focusAtStartup);
+
+  file.write("[output.DP-1]\nfocus_at_startup = \"yes\"\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().outputs[0].focusAtStartup);
+  CHECK(containsDiagnostic(store, "ignoring output.DP-1.focus_at_startup (expected boolean)"));
+}
+
 UMBRIEL_TEST(dynamicNamedWorkspaceDeclarationsReserveEmptySentinelCapacity) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();

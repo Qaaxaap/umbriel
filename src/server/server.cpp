@@ -970,6 +970,21 @@ namespace umbriel {
     }
     m_backendManager->markStarted();
 
+    // Move the mouse cursor to the first output with "focus_at_startup" enabled, if any.
+    for (const auto& output : m_outputs) {
+      const OutputRule* rule = findOutputRule(config(), output->identity());
+      if (rule == nullptr || !rule->focusAtStartup || !output->desktopEnabled()) {
+        continue;
+      }
+      wlr_box box{};
+      wlr_output_layout_get_box(m_outputLayout, output->wlr(), &box);
+      if (box.width <= 0 || box.height <= 0) {
+        continue;
+      }
+      m_cursor->warpToPreservingFocus(box.x + box.width / 2.0, box.y + box.height / 2.0);
+      break;
+    }
+
     // These are delivered through the event loop, not a signal handler, so the shutdown path is ordinary code. Note the
     // side effect: wl_event_loop_add_signal blocks the signal process-wide, and a blocked mask survives fork and exec,
     // so every fork below must clear it before handing off to a child.

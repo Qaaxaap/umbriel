@@ -273,6 +273,7 @@ namespace umbriel {
     std::optional<double> scale;
     std::optional<int> transform;
     VrrMode vrr = VrrMode::Disabled;
+    bool focusAtStartup = false;
     // Global safety gate. Even a client async hint or a window-rule override
     // cannot request tearing unless the owning output enables it.
     bool allowTearing = false;
