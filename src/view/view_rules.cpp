@@ -264,6 +264,8 @@ namespace umbriel {
     m_aloneOpeningSeed = AloneSeed::None;
   }
 
+  bool View::confinePointer() { return resolvedRules().confinePointer.value_or(false); }
+
   std::optional<bool> View::tearingRuleOverride() { return resolvedRules().allowTearing; }
 
   void View::applyWindowRules() {
