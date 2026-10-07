@@ -188,6 +188,7 @@ format:
 lint *files: (_ensure-configured mode) (_enable-tests mode)
     #!/usr/bin/env bash
     set -euo pipefail
+    meson compile -C build-{{mode}} umbriel unit-tests harness-clients
     opts=(-quiet -p "build-{{mode}}" -header-filter='\.\./(src|tests)/.*' -warnings-as-errors='*' -extra-arg=-Wno-error)
     if (($# > 0)); then
         exec clang-tidy --use-color "${opts[@]}" "$@"
