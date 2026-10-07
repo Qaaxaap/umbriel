@@ -321,6 +321,9 @@ namespace umbriel {
       if (rule.defaultPinned) {
         resolved.defaultPinned = rule.defaultPinned;
       }
+      if (rule.confinePointer) {
+        resolved.confinePointer = rule.confinePointer;
+      }
       if (rule.focusOnActivate) {
         resolved.focusOnActivate = rule.focusOnActivate;
       }
