@@ -130,6 +130,11 @@ namespace umbriel {
       return false;
     }
     applyFadeAlpha();
+    if (m_layerSurface != nullptr && m_layerSurface->current.layer == ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND) {
+      if (Output* out = output()) {
+        out->markBlurBackgroundDirty();
+      }
+    }
     return true;
   }
 

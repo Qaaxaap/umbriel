@@ -763,6 +763,8 @@ namespace umbriel {
       int m_canvasX = 0;
       int m_canvasY = 0;
       bool m_visible = true;
+      // A snapshot under the output's background layer is part of the shared blur input until its final frame.
+      bool m_blurBackground = false;
       // popin/zoom end scale; 1.0 = no shrink.
       double m_shrinkTo = 1.0;
       // Each copied buffer with its captured opacity, position and size relative to the content tree.

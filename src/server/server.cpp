@@ -1323,6 +1323,8 @@ namespace umbriel {
         m_captured(box), m_canvasX(tree->node.x), m_canvasY(tree->node.y), m_borders(std::move(borders)),
         m_shadow(shadow) {
     m_event = event;
+    m_blurBackground =
+        output != nullptr && tree->node.parent == output->layerTree(ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND);
     const fx_effect_requirements requirements = wlr_scene_node_effect_requirements(&tree->node);
     m_retainedPersistent = requirements.persistent;
     m_retainedInPlace = requirements.in_place;
@@ -1387,6 +1389,9 @@ namespace umbriel {
     }
     if (m_tree != nullptr) {
       wlr_scene_node_destroy(&m_tree->node);
+    }
+    if (m_blurBackground && m_output != nullptr) {
+      m_output->markBlurBackgroundDirty();
     }
     if (m_server != nullptr) {
       m_server->effects().releaseRequirements(
@@ -1535,6 +1540,9 @@ namespace umbriel {
     }
 
     applyPresentation();
+    if (m_blurBackground && m_output != nullptr) {
+      m_output->markBlurBackgroundDirty();
+    }
     return m_alpha.animating() || m_slide.animating();
   }
 
