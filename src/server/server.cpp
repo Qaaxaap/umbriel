@@ -219,7 +219,7 @@ namespace umbriel {
           configuredAssignments.empty() ? "" : " && systemctl --user set-environment" + configuredAssignments;
       std::string command =
           "variables='WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_SESSION_TYPE "
-          "UMBRIEL_SOCKET'; systemd_ready=false; "
+          "XCURSOR_THEME XCURSOR_SIZE UMBRIEL_SOCKET'; systemd_ready=false; "
           "if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then "
           "if systemctl --user import-environment $variables";
       command += publishConfigured;
