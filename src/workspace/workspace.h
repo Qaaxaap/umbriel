@@ -128,6 +128,9 @@ namespace umbriel {
     // True when no tiled window other than `view` is in the layout: `view` is the only tiled window, or would be the
     // only one once it attaches. The opening path needs that second form, before the view is in the layout.
     [[nodiscard]] bool isOnlyTiledView(const View* view) const;
+    // True when `view` is the only window sharing this workspace: no other tile and no other float. A pinned or
+    // scratchpad window neither holds the workspace nor takes it.
+    [[nodiscard]] bool isOnlyVisibleView(const View* view) const;
     // Predict the first configure by applying the same insertion and full-width
     // transition that the mapped path will use on the authoritative layout.
     [[nodiscard]] Layout::InitialSize initialMaximizedSize(View* view, const wlr_box& usable) const;
@@ -293,10 +296,13 @@ namespace umbriel {
     bool m_inSwitchTransition = false;
     bool m_arrangePending = false;
     bool m_arrangeAnimate = true;
-    // Remembers the last layout state, so alone-ness is only recomputed when it changed.
+    // Remembers the last state each occupancy question was answered in, so the answers are only recomputed when they
+    // changed.
     bool m_refreshingAloneRules = false;
     size_t m_lastAloneViewCount = 0;
     View* m_lastAloneSoleView = nullptr;
+    size_t m_lastOnlyWindowCount = 0;
+    View* m_lastOnlyWindowView = nullptr;
     uint64_t m_lastAloneGeneration = 0;
     int m_slideOffsetX = 0;
     int m_slideOffsetY = 0;

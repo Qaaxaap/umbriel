@@ -179,6 +179,7 @@ namespace umbriel {
           strict(boolean("is_pinned", &W::matchPinned)),
           strict(boolean("is_scratchpad", &W::matchScratchpad)),
           strict(boolean("is_alone", &W::matchAlone)),
+          strict(boolean("is_only_window", &W::matchOnlyWindow)),
           strict(boolean("at_startup", &W::matchAtStartup)),
       };
       static const registry::Fields<W> floatingSize{

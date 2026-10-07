@@ -452,6 +452,10 @@ namespace umbriel {
         m_server->focusView(this);
       }
       refreshStateRuleEffects();
+      // A float pins without touching the layout, so the occupancy questions need a pass of their own.
+      if (m_workspace != nullptr) {
+        m_workspace->markArrange();
+      }
       return;
     }
 
@@ -476,6 +480,9 @@ namespace umbriel {
       overview->onViewPinnedChanged(this);
     }
     refreshStateRuleEffects();
+    if (m_workspace != nullptr) {
+      m_workspace->markArrange();
+    }
   }
 
   void View::setFloating(bool floating, bool focus, TilePlacement placement) {

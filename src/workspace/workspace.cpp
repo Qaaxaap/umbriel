@@ -110,6 +110,11 @@ namespace umbriel {
         layout.insertViewIntoColumn(view, column, placement.row);
       }
     }
+
+    // Whether a window shares its workspace with the others, which is what `match.is_only_window` measures. A pinned
+    // window floats above the workspace rather than on it, and a scratchpad window has already left it, so neither
+    // counts as company.
+    bool sharesWorkspace(const View* view) { return view != nullptr && view->mapped() && !view->pinned(); }
   } // namespace
 
   Workspace::Workspace(
@@ -274,6 +279,8 @@ namespace umbriel {
     if (attachToLayout) {
       layoutAttach(view, std::nullopt, std::nullopt, origin);
     }
+    // A float joins no layout, so nothing below would mark the workspace for a pass; occupancy questions need one.
+    markArrange();
     m_group->reconcileDynamic();
   }
 
@@ -300,6 +307,9 @@ namespace umbriel {
       // The window we remembered as the only one is gone: forget it, so another window that replaces it is still
       // noticed as new.
       m_lastAloneSoleView = nullptr;
+    }
+    if (view == m_lastOnlyWindowView) {
+      m_lastOnlyWindowView = nullptr;
     }
     updateUrgent();
     std::erase(m_floatingStack, view);
@@ -338,6 +348,19 @@ namespace umbriel {
         if (member != view) {
           return false;
         }
+      }
+    }
+    return true;
+  }
+
+  bool Workspace::isOnlyVisibleView(const View* view) const {
+    // A window that does not count as company cannot be the only one either.
+    if (!sharesWorkspace(view)) {
+      return false;
+    }
+    for (View* other : m_views) {
+      if (other != view && sharesWorkspace(other)) {
+        return false;
       }
     }
     return true;
@@ -623,9 +646,10 @@ namespace umbriel {
     }
   }
 
-  // Tells every window whether it is alone, but only when something actually changed. It compares the number of
-  // tiled windows, which window is the only one, and the config version, so every change is noticed (even one
-  // window replaced by another at the same time). The guard stops the window handlers from triggering another pass.
+  // Tells every window whether it is alone, and whether it is the workspace's only window, but only when one of those
+  // answers changed. It compares each answer's count and holder, and the config version, so every change is noticed
+  // (even one window replaced by another at the same time). The guard stops the window handlers from triggering another
+  // pass.
   void Workspace::refreshAloneRuleStates() {
     if (m_refreshingAloneRules) {
       return;
@@ -643,14 +667,32 @@ namespace umbriel {
     if (tiledViewCount != 1) {
       soleTiled = nullptr;
     }
+    View* soleVisible = nullptr;
+    size_t visibleViewCount = 0;
+    for (View* other : m_views) {
+      if (!sharesWorkspace(other)) {
+        continue;
+      }
+      ++visibleViewCount;
+      if (visibleViewCount == 1) {
+        soleVisible = other;
+      }
+    }
+    if (visibleViewCount != 1) {
+      soleVisible = nullptr;
+    }
     const uint64_t generation = configStore().generation();
     if (tiledViewCount == m_lastAloneViewCount
         && soleTiled == m_lastAloneSoleView
+        && visibleViewCount == m_lastOnlyWindowCount
+        && soleVisible == m_lastOnlyWindowView
         && generation == m_lastAloneGeneration) {
       return;
     }
     m_lastAloneViewCount = tiledViewCount;
     m_lastAloneSoleView = soleTiled;
+    m_lastOnlyWindowCount = visibleViewCount;
+    m_lastOnlyWindowView = soleVisible;
     m_lastAloneGeneration = generation;
     m_refreshingAloneRules = true;
     for (View* view : m_views) {

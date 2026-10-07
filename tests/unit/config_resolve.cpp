@@ -1070,6 +1070,46 @@ UMBRIEL_TEST(windowRulesMatchIsAlone) {
   CHECK(anyStateNotAlone.defaultPinned && *anyStateNotAlone.defaultPinned);
 }
 
+UMBRIEL_TEST(windowRulesMatchIsOnlyWindow) {
+  Config config;
+
+  WindowRule onlyRule;
+  onlyRule.appIdPatterns.add("^player$");
+  onlyRule.matchOnlyWindow = true;
+  onlyRule.borderWidth = 0;
+  config.windowRules.push_back(std::move(onlyRule));
+
+  WindowRule sharedRule;
+  sharedRule.appIdPatterns.add("^player$");
+  sharedRule.matchOnlyWindow = false;
+  sharedRule.borderWidth = 4;
+  config.windowRules.push_back(std::move(sharedRule));
+
+  // Nothing else on the workspace: the is_only_window=true rule applies.
+  const auto solo = umbriel::resolveWindowRules(
+      config, "player", std::nullopt, std::nullopt, ContentType::None, {.alone = true, .onlyWindow = true}, 0
+  );
+  CHECK(solo.borderWidth && *solo.borderWidth == 0);
+
+  // A float beside a tile: still alone in the layout, so is_alone keeps holding, but no longer the only window.
+  const auto tiledBesideFloat = umbriel::resolveWindowRules(
+      config, "player", std::nullopt, std::nullopt, ContentType::None, {.alone = true, .onlyWindow = false}, 0
+  );
+  CHECK(tiledBesideFloat.borderWidth && *tiledBesideFloat.borderWidth == 4);
+
+  // The selector is independent: a rule carrying only is_alone matches in both states.
+  WindowRule aloneRule;
+  aloneRule.appIdPatterns.add("^player$");
+  aloneRule.matchAlone = true;
+  aloneRule.defaultMaximize = true;
+  config.windowRules.push_back(std::move(aloneRule));
+
+  const auto aloneBesideFloat = umbriel::resolveWindowRules(
+      config, "player", std::nullopt, std::nullopt, ContentType::None, {.alone = true, .onlyWindow = false}, 0
+  );
+  CHECK(aloneBesideFloat.defaultMaximize && *aloneBesideFloat.defaultMaximize);
+}
+
 UMBRIEL_TEST(windowVrrRuleOverridesTheOutputPolicy) {
   CHECK(umbriel::effectiveVrrEnabled(VrrMode::Disabled, false, VrrMode::Always, false));
   CHECK(!umbriel::effectiveVrrEnabled(VrrMode::Always, false, VrrMode::Disabled, false));

@@ -132,6 +132,7 @@ namespace umbriel {
             || lhs.matchPinned != rhs.matchPinned
             || lhs.matchScratchpad != rhs.matchScratchpad
             || lhs.matchAlone != rhs.matchAlone
+            || lhs.matchOnlyWindow != rhs.matchOnlyWindow
             || lhs.matchAtStartup != rhs.matchAtStartup
             || lhs.allowTearing != rhs.allowTearing) {
           return false;

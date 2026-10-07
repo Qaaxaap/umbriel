@@ -263,6 +263,9 @@ namespace umbriel {
       if (rule.matchAlone && *rule.matchAlone != state.alone) {
         continue;
       }
+      if (rule.matchOnlyWindow && *rule.matchOnlyWindow != state.onlyWindow) {
+        continue;
+      }
       if (rule.matchAtStartup && *rule.matchAtStartup != (uptimeMs < kStartupRuleDurationMs)) {
         continue;
       }
